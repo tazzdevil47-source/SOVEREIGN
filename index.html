@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#07070e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SOVEREIGN">
+<title>SOVEREIGN</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;background:#07070e;height:100%;overflow:hidden;}
+#root{height:100vh;height:100dvh;}
+input,select,textarea,button{font-family:'Crimson Text',serif;}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;}
+input[type=range]::-webkit-slider-track{height:8px;border-radius:4px;background:#1a1a30;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;margin-top:-9px;cursor:pointer;}
+::-webkit-scrollbar{display:none;}
+scrollbar-width:none;
+#splash{position:fixed;inset:0;background:#07070e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:999;}
+#splash h1{color:#c9a227;font-family:'Cinzel',serif;font-size:28px;letter-spacing:8px;margin:0;}
+#splash p{color:#6a5a45;font-size:11px;letter-spacing:3px;margin:0;}
+</style>
+
+<script>
+window.addEventListener('beforeinstallprompt', (event) => {
+  console.log('[SOVEREIGN PWA] install prompt available');
+});
+window.addEventListener('appinstalled', () => {
+  console.log('[SOVEREIGN PWA] installed successfully');
+});
+</script>
+
+</head>
+<body>
+<div id="splash"><h1>SOVEREIGN</h1><p>THE PERSONAL WAR ROOM</p></div>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js" crossorigin></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script type="text/babel">
+const{useState,useEffect,useRef}=React;
+const{AreaChart,Area,LineChart,Line,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer}=Recharts;
+
+// ── THEME ─────────────────────────────────────────────────────────────
+const T={bg:'#07070e',card:'#0d0d1a',input:'#0a0a1e',gold:'#c9a227',goldLight:'#e8c547',goldDim:'#1a1505',crimson:'#8b1515',text:'#e5d5b5',muted:'#6a5a45',dim:'#2a2a45',border:'#1a1a30',steel:'#1e3a5f'};
+const S={
+  card:{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:14,marginBottom:10},
+  inp:{background:T.input,border:`1px solid ${T.border}`,borderRadius:8,padding:'11px 13px',color:T.text,width:'100%',outline:'none',fontSize:16,boxSizing:'border-box',fontFamily:'inherit',WebkitAppearance:'none'},
+  btn:{background:T.gold,color:'#000',border:'none',borderRadius:8,padding:'12px 18px',cursor:'pointer',fontWeight:700,fontSize:14,fontFamily:'inherit',minHeight:46,touchAction:'manipulation'},
+  btnO:{background:'transparent',color:T.gold,border:`1px solid ${T.gold}55`,borderRadius:8,padding:'10px 14px',cursor:'pointer',fontSize:13,fontFamily:'inherit',minHeight:44,touchAction:'manipulation'},
+  btnD:{background:T.crimson,color:'#fff',border:'none',borderRadius:8,padding:'10px 14px',cursor:'pointer',fontSize:13,fontFamily:'inherit',minHeight:44,touchAction:'manipulation'},
+  btnG:{background:'transparent',color:T.muted,border:`1px solid ${T.border}`,borderRadius:8,padding:'9px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit',minHeight:40,touchAction:'manipulation'},
+  lbl:{color:T.muted,fontSize:10,letterSpacing:1.5,textTransform:'uppercase',marginBottom:5,display:'block'},
+  h2:{color:T.gold,fontFamily:"'Cinzel',serif",margin:'0 0 14px',fontSize:17,fontWeight:600,letterSpacing:1},
+  h3:{color:T.text,margin:'0 0 10px',fontSize:14,fontWeight:600},
+};
+
+// ── STORAGE ───────────────────────────────────────────────────────────
+const db={
+  get:async(k)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}},
+  set:async(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){console.error(e);}},
+};
+const today=()=>new Date().toISOString().split('T')[0];
+const fmt=(d)=>{try{return new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'});}catch{return d;}};
+
+// ── NAV ───────────────────────────────────────────────────────────────
+const NAV=[
+  {id:'dashboard',label:'Command', sym:'⚔'},{id:'vitals',   label:'Vitals',   sym:'◈'},
+  {id:'workout',  label:'Warfare', sym:'⛉'},{id:'zcycle',   label:'Mind',     sym:'Z'},
+  {id:'ycycle',   label:'Treasury',sym:'Y'},{id:'food',     label:'Rations',  sym:'◎'},
+  {id:'lore',     label:'Lore',    sym:'✦'},{id:'campaigns',label:'Campaign', sym:'⊕'},
+  {id:'calendar', label:'War Map', sym:'▦'},{id:'relations',label:'Alliance', sym:'◉'},
+  {id:'todos',    label:'Orders',  sym:'▣'},{id:'summary',  label:'Intel',    sym:'≡'},
+  {id:'academy',  label:'Academy', sym:'Ω'},{id:'settings', label:'Forge',    sym:'⚙'},
+];
+
+const DEF={
+  emperorName:'Emperor Vaelthor',capitalName:'',
+  commanderNames:['Commander Draven','Commander Syla','Commander Roran','Commander Kezath'],
+  pageCommanders:{dashboard:0,vitals:1,workout:2,zcycle:3,ycycle:0,food:1,lore:2,campaigns:3,calendar:0,relations:1,todos:2,summary:3,academy:1,settings:0},
+  targetWeight:null,startWeight:null,motivationQuotes:[],
+};
+
+// ── 100 THREATS ───────────────────────────────────────────────────────
+const THREATS=[
+{id:1,type:'Dragon',name:'Shmarg the Crimson',threat:"Shmarg the Crimson has awakened from his thousand-year slumber. He demands 1,000 lives as tribute or he will raze the capital by dawn.",win:"Shmarg's skull is mounted on the palace gates. His hoard of gold is seized. The eastern provinces celebrate for a generation.",lose:"Three provinces burned to ash. 12,000 dead. The eastern governor's head was found on a pike of bone."},
+{id:2,type:'Dragon',name:'Vexara the Frost Empress',threat:"Vexara has sealed the Northern Pass in a glacier of her own breath. She demands the Northern Duchy as her personal territory.",win:"Vexara is driven back into the tundra, her wing severed. The Northern Pass reopens. Trade resumes within the week.",lose:"The Northern Duchy is abandoned. 40,000 citizens enslaved to maintain her hoard."},
+{id:3,type:'Dragon',name:'Gorethax the Void Wyrm',threat:"Gorethax has corrupted the River Aldrath with acid blood. The water supply of four cities is poison. He circles overhead awaiting surrender.",win:"Gorethax is slain mid-flight. A new aqueduct is named in the Emperor's honour. The river clears within days.",lose:"All four cities evacuated. Gorethax nests in the ruins. The empire loses its most fertile farmland for a generation."},
+{id:4,type:'Dragon',name:'Durakon the Iron-Scaled',threat:"Durakon's scales turn every blade. 300 soldiers are dead at the Eastern Fortress and he is taking his time.",win:"Durakon is brought down with volcanic glass weaponry. His scales are forged into the Emperor's new armour.",lose:"The Eastern Fortress falls. General Halveth and his entire regiment are dead — burned to the last man."},
+{id:5,type:'Dragon',name:'Nyxareth the Shadow Drake',threat:"Nyxareth strikes unseen through darkness. Three generals found dead in their beds — burned from inside. She cannot be seen until she strikes.",win:"Nyxareth is trapped and slain using mirror arrays. Morale surges across the empire.",lose:"Nyxareth slays five more generals. The high command is paralysed. Military operations cease for thirty days."},
+{id:6,type:'Dragon',name:'Khelroth the Acid Tyrant',threat:"Khelroth is dissolving the capital's outer walls. Three towers have already collapsed. The walls will be gone by nightfall.",win:"Khelroth is baited into the river and drowned. The walls are rebuilt twice as thick. His acid residue becomes mortar.",lose:"The outer wall is gone. Defence Minister Aldric is dissolved alive before the crowd. The capital falls into chaos."},
+{id:7,type:'Dragon',name:'Thessavar the Undying',threat:"Thessavar cannot be killed — every wound closes instantly. She has survived forty-seven assassination attempts. Now she besieges the harbour.",win:"Thessavar's heart is located and destroyed. She finally dies slowly. Her body is burned in seven separate fires.",lose:"Thessavar destroys the entire harbour fleet. Admiral Keth drowns when his flagship is crushed in her jaws."},
+{id:8,type:'Dragon',name:'Brunhvar the Mountain Lord',threat:"Brunhvar has blocked all mountain passes and demands 1,000 soldiers delivered as a living sacrifice before he will reopen them.",win:"Brunhvar is killed before the sacrifice arrives. His bones become the foundation of a new fortress.",lose:"1,000 soldiers are sent. Brunhvar demands 2,000 more. Sir Davos barely escapes, returning in disgrace."},
+{id:9,type:'Dragon',name:'Zephyrix the Storm Caller',threat:"Zephyrix has summoned a permanent lightning storm over the capital. No messenger can fly. Lightning kills soldiers at random every hour.",win:"Zephyrix is slain at altitude by skyborn archers. The storm disperses. The capital rebuilds stronger.",lose:"The storm rages for thirty days. 2,000 struck by lightning. Three ministers are dead. The throne room collapses."},
+{id:10,type:'Dragon',name:'Malgorath the Ancient',threat:"Malgorath — eldest of all living dragons — claims the empire as his hoard. He is older than the empire's first stone.",win:"Malgorath is defeated in a legendary three-day battle recorded as the greatest achievement in imperial history.",lose:"Malgorath takes the palace as his lair. The Emperor is exiled. The empire fractures — three lords declare independence."},
+{id:11,type:'Dragon',name:'Raxthar the Twin-Headed',threat:"Raxthar besieges Port Halveth, one head watching each gate. No ship enters or leaves. The port's food runs out in five days.",win:"One head is poisoned, driving Raxthar into a maddened frenzy. He is steered into the sea and drowns.",lose:"Port Halveth starves. Admiral Reth surrenders. Raxthar makes the harbour his permanent roost."},
+{id:12,type:'Dragon',name:'Virenth the Plague Drake',threat:"Virenth spreads a flesh-rotting sickness through his breath. Every soldier within 200 metres becomes infected within hours.",win:"Virenth is brought down by ballista from outside his breath range. His plague dies with him.",lose:"The plague spreads to the capital. Defence Minister Aldric dies of infection. 40,000 civilians quarantined."},
+{id:13,type:'Dragon',name:'Corvanax the Golden Deceiver',threat:"Corvanax visits the nobility in human form, offering immortality and wealth. Four lords have already pledged loyalty to him.",win:"Corvanax's human disguise is exposed and he is shot down. The four corrupted lords are arrested and tried.",lose:"Corvanax controls eight lords, two generals, and the treasury council. Civil war is inevitable."},
+{id:14,type:'Dragon',name:'Sorveth the Night Terror',threat:"Sorveth hunts exclusively at night. Two hundred soldiers found dead at their posts — burned from behind. She vanishes before dawn.",win:"Sorveth is caught in a sunlight trap and blinded. She crashes and is slain. Night patrols resume.",lose:"Sorveth kills the night-watch commander. No soldier will stand night patrol. Two supply convoys are raided."},
+{id:15,type:'Dragon',name:'Hexathar the Bone Wyrm',threat:"Vigil the Necromancer has raised Hexathar — a long-dead ancient dragon — as an undead weapon. Steel and fire do nothing against him.",win:"Vigil's phylactery is smashed, breaking his control. Hexathar collapses mid-flight and shatters across the southern fields.",lose:"Hexathar tears the southern gate from its hinges. Vigil rides the undead dragon into the capital square."},
+{id:16,type:'Undead',name:'Vigil the Necromancer',threat:"Vigil has raised 10,000 of your own fallen soldiers who now march against you. They remember every fortification. He watches from a floating black tower.",win:"Vigil is defeated and his phylactery destroyed. The undead collapse in unison. Vigil is imprisoned in a cell of living flame.",lose:"Vigil's horde breaches the capital. He murders half the population to grow his army. Defence Minister Aldric is raised as his personal champion."},
+{id:17,type:'Undead',name:'The Lich Queen Morreva',threat:"The Lich Queen Morreva has awakened beneath the oldest cathedral. She considers all living rule an insult to her eternal reign.",win:"Morreva's phylactery — hidden inside the cathedral's altar — is found and destroyed. She screams for six minutes as she dissolves.",lose:"Morreva takes control of the cathedral. She declares herself Eternal Empress. Sir Davos is slain attempting to reach her chamber."},
+{id:18,type:'Undead',name:'Baron Ashveil and his Wraith Legion',threat:"3,000 wraiths pass through walls and armour alike. Steel does nothing. They have already passed through the outer wall and killed 40 soldiers.",win:"Ashveil is banished using a ritual of sacred light. His Wraith Legion dissolves instantly.",lose:"The Wraith Legion occupies the barracks. Ashveil possesses the court wizard, who burns the imperial library."},
+{id:19,type:'Undead',name:'Korroth the Death Knight',threat:"Korroth — once the empire's greatest paladin — commands 500 skeletal riders. He knows every imperial battle tactic from the inside.",win:"Korroth is unhorsed and his cursed armour shattered. The paladin within is briefly freed — he thanks the Emperor before fading.",lose:"Korroth's cavalry slaughters the imperial mounted regiment. Captain Reth is killed. The horses refuse to be ridden for weeks."},
+{id:20,type:'Undead',name:'The Risen Plague Walkers',threat:"Plague Walkers march from the eastern cemetery. Anyone they touch dies within an hour and rises to join the horde. It doubles every six hours.",win:"The Plague Walkers are contained by fire before reaching the city. The eastern cemetery is salted and blessed.",lose:"The Plague Walkers breach the lower city. 400 citizens rise within an hour. 3,000 living souls are trapped inside."},
+{id:21,type:'Undead',name:'Xereth the Soul Collector',threat:"Xereth passes unseen through the barracks each night harvesting sleeping soldiers' souls. They wake physically unharmed but hollow — unable to fight or speak. 300 are already soulless.",win:"Xereth is trapped inside a soul-mirror and shattered. All 300 stolen souls return. The soldiers wake gasping.",lose:"1,000 soldiers are soulless. Xereth takes General Morvaine's soul — the general walks into the enemy camp and opens the gate."},
+{id:22,type:'Undead',name:'The Bone Throne of Soromar',threat:"10,000 ancient soldiers from an empire that predates yours have awakened. The Bone Throne floats above them directing the assault. It remembers only war.",win:"The Bone Throne is shattered by siege weapons. Without direction, the skeleton army collapses into loose bones.",lose:"The Bone Throne breaches the palace gate and sits upon the Emperor's throne. The throne room is destroyed."},
+{id:23,type:'Undead',name:'Duskvar the Revenant',threat:"General Duskvar — executed wrongly for treason twenty years ago — has returned as a revenant. He seeks only the Defence Minister who signed his death warrant.",win:"The injustice is formally acknowledged. Duskvar's name is cleared by royal decree. He fades peacefully.",lose:"Duskvar tears Defence Minister Aldric apart with his bare hands then kills 80 guards before dawn."},
+{id:24,type:'Undead',name:'The Hollow Court',threat:"The entire eastern noble district was murdered in their sleep and risen as undead aristocrats who continue to attend functions and sign false decrees.",win:"The Hollow Court is identified and purged in a single night operation. Real noble families fill the vacant titles.",lose:"The Hollow Court passes three false edicts diverting funds from the army. Two real lords are framed and arrested."},
+{id:25,type:'Undead',name:'Morthaxa the Wailing Witch',threat:"Morthaxa has taken residence in the city's bell tower. Her scream kills anyone within 400 metres instantly three times per day. The district stands empty.",win:"Morthaxa's true name is spoken beneath her tower, binding her voice. She shrieks in silence forever, imprisoned in the bell.",lose:"Morthaxa expands her range. Three members of the Emperor's council are found dead at their desks."},
+{id:26,type:'Undead',name:'The Crypt Legion',threat:"10,000 corpse soldiers sealed beneath the city's founding stone have been accidentally released during construction work. They march through the sewers in perfect silence.",win:"The Legion is met underground with fire. They are driven back into the crypts, sealed with iron and blessed stone.",lose:"The Crypt Legion emerges in the market district at dawn. 600 civilians killed. The founding stone is never repaired."},
+{id:27,type:'Undead',name:'Aethon the Pale Rider',threat:"Aethon — a skeletal horseman faster than any living horse — has poisoned every well, cistern, and water source within the city walls. Hours of clean water remain.",win:"Aethon is unhorsed by the cavalry regiment and his bones scattered to the four winds. The wells are purified.",lose:"The capital runs dry. Riots begin by afternoon. Defence Minister Aldric is found dead on the road the next morning."},
+{id:28,type:'Undead',name:'The Banshee of Valdross',threat:"The Banshee wails through the city every midnight. Her cry doesn't kill — it drives soldiers slowly mad. After three nights, 200 have deserted or turned violent.",win:"The Banshee's anchor — a locket belonging to her murdered daughter — is found and returned to her. She weeps once and disperses.",lose:"After seven nights, 800 soldiers are combat-ineffective. Three have killed fellow soldiers. Morale collapses entirely."},
+{id:29,type:'Undead',name:'Necros the Unliving King',threat:"Necros produces ancient documents proving he ruled this land 600 years ago — making his throne claim legally valid. He arrives with 5,000 undead soldiers and a lawyer.",win:"The legal challenge is defeated in court. Necros's claim is nullified. He attempts to take it by force and is destroyed.",lose:"The court rules in Necros's favour for six hours. He is expelled by force but the legal precedent lets three lords challenge the Emperor's legitimacy."},
+{id:30,type:'Undead',name:'The Shadow Priests of the Void',threat:"The Shadow Priests have exhumed Emperor Valdren the Mad — history's most brutal ruler — and are mid-ritual to resurrect him. The ritual completes at midnight.",win:"The ritual is interrupted. Valdren the Mad is re-killed before fully waking. The Shadow Priests are captured.",lose:"Valdren the Mad returns. He executes six current ministers for 'incompetence.' A 48-hour reign of terror leaves 200 dead."},
+{id:31,type:'Plague',name:'The Rovan Plague',threat:"The Rovan Plague has reached the capital via infected grain. Flesh rots within 48 hours of exposure. Three barracks are already infected.",win:"The Rovan Plague is contained through quarantine. A cure is found in an old physician's notes. All infected soldiers recover.",lose:"The Rovan Plague spreads to the general population. 8,000 dead in ten days. The empire is internationally quarantined."},
+{id:32,type:'Plague',name:'The Crimson Fever',threat:"The Crimson Fever spreads through airborne blood — infected soldiers bleed from the eyes and the vapour infects anyone nearby. 40 soldiers lost overnight.",win:"The Crimson Fever is identified as originating from poisoned arrows. The source is traced and destroyed.",lose:"The Crimson Fever reaches the palace staff. The court physician is infected and dies. The Emperor's guard is reduced from 200 to 60."},
+{id:33,type:'Plague',name:'The Grey Death',threat:"The Grey Death causes soldiers to fall into a deep sleep from which they never wake. 150 are currently sleeping in the eastern barracks. It spreads nightly.",win:"The Grey Death is traced to poisoned incense burned in the barracks. The incense-maker is arrested. All sleeping soldiers wake.",lose:"500 soldiers sleep forever. The eastern barracks becomes a silent dormitory of the dead. The incense-maker is never found."},
+{id:34,type:'Plague',name:'The Iron Rust',threat:"The Iron Rust corrodes metal from inside — armour crumbles while being worn, weapons snap at the blade. The entire armoury is infected. 3,000 soldiers are unarmoured.",win:"The Iron Rust is neutralised by a salt-and-fire treatment. The armoury is purged and restocked before the enemy learns of it.",lose:"The Bloody Red Army discovers the empire's armament failure and attacks during the vulnerability window. 200 unarmoured soldiers die."},
+{id:35,type:'Plague',name:'Plague Bearer Theron',threat:"Plague Bearer Theron — a formerly holy priest consumed by disease — wanders the capital blessing the faithful, spreading infection through gesture. 300 infected and he believes he is healing.",win:"Theron is compassionately quarantined. The disease is destroyed. Theron, freed from infection, weeps at what he has done.",lose:"Theron reaches the central temple and blesses the entire congregation at once — 800 infected in a single hour."},
+{id:36,type:'Plague',name:'The Black Breath Epidemic',threat:"Enemy agents released Virenth the Plague Drake's breath into the water supply. Citizens are mutating — growing scales and losing reason — and attacking their neighbours.",win:"The mutagen is identified and an antidote synthesised. All 400 mutating citizens are returned to human form. The agent is captured.",lose:"80 citizens mutate fully into something inhuman. Three escape into the city. Public panic costs the empire significant political stability."},
+{id:37,type:'Plague',name:'The Weeping Sickness',threat:"The Weeping Sickness causes permanent blindness after 24 hours — victims weep black tears before sight fails. It has blinded 200 soldiers. It spreads through eye contact.",win:"The Weeping Sickness is cured with a rare extract. All 200 blinded soldiers regain sight.",lose:"600 soldiers are permanently blinded. The archery corps is destroyed entirely. All ranged defence is compromised for months."},
+{id:38,type:'Plague',name:'The Void Spores',threat:"The Void Spores — a black fungal infection — control their hosts like puppets while appearing fully human. Infected soldiers carry out subtle sabotage. 100 confirmed infected.",win:"A detection ritual identifies all infected soldiers. They are cured using antifungal flame therapy. The sabotage is reversed.",lose:"An infected general destroys the grain stores. Three months of food is gone. The Void Spores are found in the palace kitchen staff."},
+{id:39,type:'Plague',name:'The Burning Madness',threat:"The Burning Madness is a rage-plague — infected soldiers attack whoever is nearest. Three internal battles have already occurred. Twenty soldiers dead from friendly fire.",win:"The Burning Madness is traced to a specific grain batch. It is destroyed. Infected soldiers are restrained until the madness passes.",lose:"The Burning Madness triggers a full internal battle in the western barracks. 80 soldiers die fighting each other."},
+{id:40,type:'Plague',name:'The Last Harvest Blight',threat:"The Last Harvest Blight has destroyed every crop within 50 miles of the capital. The imperial food supply will last thirty days. Winter begins in twenty.",win:"Emergency trade routes are established and the Blight's source — a saboteur's buried ritual stone — is found and destroyed.",lose:"The empire faces famine. Two outer provinces declare independence. Riots in the capital kill 40 civilians."},
+{id:41,type:'Army',name:'The Bloody Red Army',threat:"50,000 berserkers march on the capital with no terms and no mercy. Their war standard is made from the skins of the last three emperors they defeated.",win:"The Bloody Red Army is broken at the Valley of Sorrath. Their warlord is captured and publicly tried. The standard is burned.",lose:"The Bloody Red Army breaches the outer wall. Three districts are sacked. General Halveth is killed holding the second gate."},
+{id:42,type:'Army',name:'The Iron Veil Alliance',threat:"Three neighbouring kingdoms have unified for the first time in a century expressly to destroy the empire. Their combined army of 80,000 assembles at the border.",win:"The Alliance is fractured diplomatically before battle. One kingdom is bribed, one threatened, one fights alone and loses.",lose:"The Iron Veil pushes through the northern border. Two frontier provinces are occupied. The empire loses 20% of its territory in two weeks."},
+{id:43,type:'Army',name:'The Shadow Compact',threat:"The Shadow Compact has accepted a contract to eliminate every imperial leader above captain rank within thirty days. Three have already died this week.",win:"The Shadow Compact's contract is bought out by a higher counter-offer. They stand down. Three rogue agents are captured.",lose:"The Shadow Compact kills four ministers, two generals, and Admiral Keth within the month."},
+{id:44,type:'Army',name:"Jarl Theron's Northern Warhost",threat:"Jarl Theron leads 15,000 northern raiders who breached the coastal fortifications using the frozen sea as a road. Three coastal towns are already ash.",win:"Jarl Theron's fleet is trapped by a southern thaw. His warhost is surrounded and forced to surrender.",lose:"Jarl Theron sacks Port Halveth. Admiral Reth's entire northern squadron is burned at anchor."},
+{id:45,type:'Army',name:'Lord Valdris and his Steel Legion',threat:"Lord Valdris has deployed forbidden mechanical war machines — steam-powered constructs that feel no pain and never tire — advancing on the eastern gate.",win:"The constructs' fuel lines are sabotaged. They grind to a halt. Lord Valdris is captured and his engineering blueprints confiscated.",lose:"Two constructs breach the eastern gate and rampage through the docklands. Lord Valdris escapes with half his blueprints."},
+{id:46,type:'Army',name:'The Crimson Brotherhood',threat:"The Crimson Brotherhood has declared the Emperor a heretic and laid siege to the capital with 20,000 faithful who fight without fear of death.",win:"The Brotherhood's High Priest is captured and put on public trial. His rhetoric collapses. Half the Brotherhood lays down arms.",lose:"The Brotherhood holds the eastern gate for six days. Sir Davos the Knight is captured trying to break the siege, held for ransom."},
+{id:47,type:'Army',name:'The Sand Kings Coalition',threat:"Seven desert kingdoms have blockaded every southern trade road. The empire's silk, spice, and medicine imports are cut. The economy begins bleeding immediately.",win:"The Coalition is divided by targeted diplomacy. Three Sand Kings defect for individual trade deals. The blockade dissolves.",lose:"The southern blockade holds for two months. Medicine shortages affect three hospitals. Inflation rises 40%."},
+{id:48,type:'Army',name:'Admiral Keth and the Iron Fleet',threat:"Admiral Keth — the empire's former naval hero, now defected — commands 200 warships blockading every port. Coastal cities have ten days of supplies.",win:"Keth's flagship is sunk in a daring night raid. The Iron Fleet scatters. Keth is captured. He reveals he was blackmailed.",lose:"Coastal cities run out of supplies. Port Halveth opens its gate without a siege. Three cities change flags within the week."},
+{id:49,type:'Army',name:'The Mercenary King Drogan',threat:"Drogan has been hired by an unknown power and arrives with 30,000 professional soldiers — better equipped than the imperial army. He makes no demands. He simply advances.",win:"Drogan's employers are identified and their payment intercepted. With no gold, Drogan's army dissolves. Half offer to switch sides.",lose:"Drogan's army defeats the western regiment. Captain Halveth surrenders. Drogan claims the western province for his unknown employer."},
+{id:50,type:'Army',name:"The Eastern Khanate of Bor'ak",threat:"25,000 light cavalry sweep into the empire's agricultural heartland. They do not siege — they burn and move. Three breadbasket provinces are already on fire.",win:"The Khanate cavalry is funnelled into a canyon ambush. 8,000 riders captured. A favourable border treaty is signed.",lose:"The Khanate burns twelve farming villages. Agricultural output falls 30% for the year. General Morvaine is demoted after failing to stop them."},
+{id:51,type:'Army',name:'Warlord Raxis the Skull Banner',threat:"Warlord Raxis has united every criminal faction into a single army of 18,000. They know the empire's roads better than its own soldiers.",win:"Raxis is betrayed by a rival crime lord bought off by the empire. He is arrested. Without him, the Skull Banner fractures.",lose:"Raxis captures three major road junctions. Trade within the empire halves overnight. The tax collector's regiment is ambushed and destroyed."},
+{id:52,type:'Army',name:'General Morvaine the Betrayer',threat:"General Morvaine — fourth in imperial command — has defected with full knowledge of every battle plan, fortress weakness, and troop deployment.",win:"Morvaine is captured in a counter-trap using false intelligence he would know is real. He is brought back in chains and publicly stripped of all honours.",lose:"Morvaine leads three perfectly executed ambushes using stolen knowledge. Two forward regiments are annihilated."},
+{id:53,type:'Army',name:'The Red Sun Cult',threat:"Red Sun Cult suicide soldiers embedded within the capital as civilians are activated. They fight to destroy specific targets. Three have already died killing senior officers.",win:"The Cult's network is identified through a captured member. 80 sleeper agents are arrested before activating.",lose:"Twelve cult members activate simultaneously. The imperial armoury, main bridge, and three barracks storerooms are destroyed."},
+{id:54,type:'Army',name:'The Phantom Army of Velreth',threat:"The Phantom Army appears and disappears without warning — attacking, withdrawing, and materialising elsewhere. They have hit four locations in six hours and cannot be tracked.",win:"The Phantoms' anchor — a portal stone — is located and destroyed. The army is stranded in the physical world and rapidly defeated.",lose:"The Phantom Army kills 300 soldiers across seven hit-and-run strikes. Soldiers refuse night duty. Two commanders resign."},
+{id:55,type:'Army',name:'The Siege Masters of Khorath',threat:"The finest engineers on the continent have built a fully operational siege fortress outside the capital's walls in twelve hours. They attack from a stronger position than the empire itself.",win:"The Khorath fortress is undermined and collapsed. The Siege Masters surrender. Three agree to defect and join the imperial engineering corps.",lose:"The Khorath fortress outlasts three counterattacks. From it, they batter the western wall until a 40-metre section collapses."},
+{id:56,type:'Army',name:'The Black Arrows Guild',threat:"Precision archer-assassins have deployed on every high point surrounding the capital. Every general, minister, or official who appears in public is immediately targeted.",win:"All Black Arrow positions are simultaneously raided. Twenty-two archers captured. The Guild withdraws its contract.",lose:"Three generals are killed in daylight within the first day. All public functions are cancelled. Governance grinds to a halt for two weeks."},
+{id:57,type:'Army',name:'The Twin Tyrants of Ghal',threat:"Two kings sharing a telepathic link and acting as a single perfect military mind lead 35,000 soldiers. They cannot be surprised, outmanoeuvred, or deceived.",win:"One twin is poisoned, severing the telepathic link. The surviving twin falls apart psychologically and surrenders within hours.",lose:"The Twin Tyrants defeat the imperial field army in a masterpiece of tactics. Captain Halveth is taken prisoner. A siege begins."},
+{id:58,type:'Army',name:'The Undying Battalion',threat:"5,000 soldiers cursed to feel no pain advance on the gates. Two were seen fighting on with three arrows each. They cannot be frightened or worn down.",win:"The curse is identified and reversed using the enemy sorcerer's own formula. The Battalion collapses — they were hiding catastrophic wounds. They surrender.",lose:"The Battalion takes the gate. The gate is now held by corpses that refused to fall. The empire retreats to the inner wall."},
+{id:59,type:'Army',name:'The Mountain Clans Uprising',threat:"Forty mountain tribes that have warred for two centuries have unified under a single leader and descend as one force of 22,000. Their unity is unprecedented.",win:"The Clan leader is identified as the only force holding the unity. He is brought to the table. A historic accord is signed.",lose:"The Mountain Clans sack two border fortresses. The unifying leader declares himself King of the Mountains — a new rival power is born."},
+{id:60,type:'Army',name:"The Sea Witch's Armada",threat:"The Sea Witch Nareth commands 80 ships powered by eternal storms. Her ships cannot be sunk — the storms repair them. They blockade the harbour.",win:"The Sea Witch's storm source — a trident driven into the harbour floor — is recovered by divers and destroyed. The fleet is exposed as ordinary ships.",lose:"The Sea Witch's fleet holds the harbour for three weeks. Two merchant convoys are destroyed. The empire cedes one coastal island in a peace deal."},
+{id:61,type:'Army',name:'The Burning Host of Kerath',threat:"The Burning Host carries alchemical fire that cannot be extinguished by water. 15,000 soldiers armed with fire-throwers advance on the wooden districts.",win:"The alchemical fire's solvent is identified and deployed in advance. The Burning Host's weapons sputter and die on contact.",lose:"The wooden districts are set ablaze. 6,000 civilians evacuated. The fire burns for two days. Three entire city blocks are destroyed."},
+{id:62,type:'Army',name:'The Pale Riders of Sorrath',threat:"The Pale Riders move three times faster than any cavalry. In three hours they have hit eleven positions simultaneously across the eastern front.",win:"The Pale Riders' supernatural speed requires a ritual fuel — a specific rare herb. The fuel is embargoed and they slow to normal speed.",lose:"The Pale Riders destroy four supply depots in a single day. The eastern front collapses. Three commanders break under the pressure."},
+{id:63,type:'Army',name:'The Rebel Alliance of the Red Throne',threat:"Four noble houses, the merchant guild, and a rogue regiment have united to storm the palace. They claim corruption and misrule. They have 8,000 soldiers and the public's sympathy.",win:"The genuine grievances are acknowledged publicly. Three corrupt officials are dismissed. The rebel lords are brought into a reformed council.",lose:"The rebel alliance takes the palace courtyard. The Emperor flees the city for twelve days. Sir Davos holds the inner palace alone with 40 guards."},
+{id:64,type:'Army',name:"The Exiled Prince Rovan's Return",threat:"Exiled Prince Rovan returns with a foreign army of 28,000 soldiers and a legitimate throne claim backed by three foreign courts. Half the border lords are already wavering.",win:"Prince Rovan's claim is legally defeated in the Council of Lords. The foreign army retreats. The wavering lords are watched carefully.",lose:"Three border lords defect to Rovan. He controls the northwestern quarter. A civil war line is drawn."},
+{id:65,type:'Army',name:'The Iron Church Inquisition',threat:"The Iron Church has declared a Holy Inquisition against the empire citing seventeen heresies. Their army of 30,000 faithful march under divine mandate. They believe they cannot lose.",win:"A theological debate defeats the Inquisition's case publicly. Three senior church figures defect. The Inquisition loses divine sanction and collapses.",lose:"The Iron Church burns the imperial library — 40,000 texts lost forever. The empire is declared heretical by six allied kingdoms."},
+{id:66,type:'Monster',name:'The Kraken of the Eastern Sea',threat:"The Kraken — the size of a warship — has destroyed twelve vessels in four days. The entire eastern sea route is closed. The naval base at Port Halveth is under attack now.",win:"The Kraken is lured into shallow water and slain with harpoon batteries. Its oil fuels the harbour lamps for a decade.",lose:"The Kraken destroys Port Halveth naval base entirely. Admiral Reth's flagship goes down with him aboard. The empire has no eastern fleet."},
+{id:67,type:'Monster',name:'The Colossus of Morrath',threat:"A 100-foot stone giant awakened by sorcery walks slowly but unstoppably toward the capital. It has already flattened two villages. It will reach the walls in twenty hours.",win:"The Colossus's animating rune — carved on the base of its left foot — is destroyed by a daring climber. It freezes mid-stride and becomes a monument.",lose:"The Colossus breaches the northern wall with a single step. It walks through four city blocks. The structural damage is catastrophic."},
+{id:68,type:'Monster',name:"The Swarm of Vel'thor",threat:"Billions of tiny flesh-eating insects drift toward the capital on the wind. They have stripped three horses to the bone in under a minute. They do not fight. They consume.",win:"The Swarm's hive mind is disrupted by a high-frequency horn discovered in the vaults. The swarm disperses harmlessly. The horn is locked away.",lose:"The Swarm passes through the eastern district. 200 civilians and 40 soldiers are lost before the city seals itself."},
+{id:69,type:'Monster',name:'The Bone Giants of the Wastes',threat:"Five Bone Giants — ancient magical constructs, each thirty feet tall — emerge from the eastern wastes. They feel nothing and follow a single ancient protocol: destroy.",win:"The Giants' deactivation command is found in ancient texts and spoken aloud. All five freeze simultaneously and become eerie monuments.",lose:"Two Bone Giants tear a fifty-metre wall section down. General Halveth is killed when the wall collapses on the command post."},
+{id:70,type:'Monster',name:'Gorrax the Troll King',threat:"Gorrax the Troll King has united 10,000 trolls who descend from the mountains in a disorganised but unstoppable wave. Trolls regenerate all wounds. Fire is the only answer.",win:"Gorrax is isolated and killed with directed fire. Without their king, the trolls lose coherence and retreat to their separate mountains.",lose:"The troll wave reaches the outer farms. Villages are flattened. 400 soldiers are injured fighting trolls without fire."},
+{id:71,type:'Monster',name:'The Leviathan Plague Serpent',threat:"A 200-foot river serpent bloated with disease has entered the River Aldrath. Its very body poisons the water. Downstream cities are already reporting sickness.",win:"The Leviathan is drawn to a tributary and killed using massive harpoon engines. Its body is burned on a raft. The river runs clean within three days.",lose:"The Leviathan reaches the capital's river gate. The water supply is poisoned. 4,000 civilians fall ill. The river is closed for a month."},
+{id:72,type:'Monster',name:'The Void Wolves of Arkon',threat:"Shadow wolves that cannot be harmed by steel or fire pass through walls. Three have been spotted inside the barracks. Seven soldiers are dead and no one saw how.",win:"The Void Wolves' weakness — sacred salt — is found in an old bestiary. Salt lines are laid throughout the barracks. The Wolves leave for easier prey.",lose:"The Void Wolves kill twelve more soldiers and wound General Reth before being accidentally driven off. Barracks morale is devastated."},
+{id:73,type:'Monster',name:'The Chimera Brood of Selthas',threat:"Selthas the Breeder has released 500 chimera simultaneously into the surrounding countryside attacking in coordinated groups. The roads to the capital are severed.",win:"Selthas is found and killed, dispersing the brood's coordination. Individual chimera are hunted efficiently. The last one is killed twelve days later.",lose:"The chimera sever all three supply roads. Forty soldiers are killed in road-clearing attempts. Two aerial couriers are killed mid-flight."},
+{id:74,type:'Monster',name:'Basilisk Queen Essa',threat:"Basilisk Queen Essa leads 200 basilisks toward the gate. Her own gaze can turn a group of ten to stone in a single glance. 80 soldiers are already statues in the eastern field.",win:"Essa is faced with a mirror array. Her own reflected gaze turns her to stone. Her basilisks scatter. A cure for the 80 stone soldiers is eventually found.",lose:"Essa reaches the gate and turns the entire gate guard — 40 soldiers — to stone in one look. The east gate is permanently closed."},
+{id:75,type:'Monster',name:'The Storm Titans of Velrath',threat:"Four Storm Titans — living tempests in humanoid form — tear apart the outer wall with elemental lightning and wind. They were summoned by a sorcerer and cannot be reasoned with.",win:"The Titans' summoner is found and killed, severing the call. The Titans disperse into ordinary storms. The wall damage is contained.",lose:"Two sections of the outer wall are destroyed. One Titan reaches the market district and tears apart the trading hall. Six people die."},
+{id:76,type:'Monster',name:'The Deep Crawler of Sorrath',threat:"A vast subterranean creature is tunnelling directly beneath the capital's foundations. Tremors grow hourly. The central plaza could collapse within the day.",win:"The Deep Crawler is redirected by vibration rings — its only fear. It burrows away. Its tunnel is sealed and the foundation reinforced.",lose:"The central plaza collapses into the Crawler's tunnel. Six buildings fall. The palace experiences structural damage."},
+{id:77,type:'Monster',name:'The Hydra of Redmere',threat:"The seven-headed Hydra of Redmere has made its nest on the main supply road bridge. Every cut spawns two more heads. No supply convoy can pass for three days.",win:"The Hydra's necks are cauterised with fire after each cut. Unable to regrow, it is killed with seven simultaneous strikes. The bridge is renamed the Hydra Crossing.",lose:"The supply road is blocked for two weeks. An impatient general tries a solo attack and is killed. His regiment follows him into disaster."},
+{id:78,type:'Monster',name:'The Mirror Wraith',threat:"The Mirror Wraith copies the appearance, voice, and skills of any soldier it encounters. Three people claiming to be General Halveth were found this morning. Command is paralysed.",win:"The Mirror Wraith cannot copy wounds. Every command figure is given a small identifying mark. The false Halveths are identified and the Wraith is cornered and shattered.",lose:"The Mirror Wraith impersonates Defence Minister Aldric and issues three false orders — withdrawing two regiments and opening a gate."},
+{id:79,type:'Monster',name:'The Corrupted Treants of Vel',threat:"The ancient forest of Vel has been corrupted by dark magic. 300 living trees — treants — march on the western district. They are magically on fire without burning up.",win:"The corruption's source — a buried sorcerer's totem — is found and destroyed. The treants stop and slowly walk back to the forest. The fire dies.",lose:"The treants reach the western granary and burn it. The entire granary is lost. The western gate is destroyed by a treant walking through it."},
+{id:80,type:'Monster',name:'The Wyvern Rider Army',threat:"500 wyvern-mounted warriors attack from the sky. They bypass the walls entirely. Arrows have limited effect at altitude. The central barracks is already being bombed.",win:"Anti-air ballista batteries thin the wyvern flock. Without air superiority, the riders retreat. Twelve wyverns are captured and an imperial sky cavalry program begins.",lose:"The wyvern riders destroy the command tower and imperial signal station. General Reth is injured. Communications are disrupted for two weeks."},
+{id:81,type:'Monster',name:'The Sea Drake of Port Halveth',threat:"The Sea Drake has destroyed the fishing fleet in three days. Forty vessels sunk. The coastal city's food and economy depend entirely on the sea. Winter approaches.",win:"The Sea Drake is baited with a false fleet and harpooned in shallow water. The fishing economy recovers within a week. Three fishermen are given minor lordship.",lose:"The fishing fleet is entirely destroyed. Port Halveth's economy collapses. The city requests emergency food aid. Three fishing families emigrate to a rival kingdom."},
+{id:82,type:'Monster',name:'The Behemoth of the Black Wastes',threat:"The Behemoth — the size of a castle, completely mindless — walks toward the capital crushing everything in its path. It does not attack. It simply walks. It arrives in eighteen hours.",win:"The Behemoth is led off course by a chain of decoy sounds and smells, steering it into uninhabited wastes. Its footprints are later used as roads.",lose:"The Behemoth walks through the northern wall section. The destruction is accidental and total. A 60-metre wall section is gone. Two towers are rubble."},
+{id:83,type:'Monster',name:'Spider Queen Veth',threat:"Spider Queen Veth — the size of a horse — has laid eggs in the food stores. Her millions of children have hatched and consumed three months of grain.",win:"Veth's pheromone signal is identified and reversed. Her children turn on her. She flees. All her children disperse harmlessly. The stores are fumigated and restocked.",lose:"Spider Queen Veth's children infest the entire storage network. All grain is contaminated. The empire faces immediate food shortages."},
+{id:84,type:'Monster',name:'The Shade Stalkers',threat:"Invisible predatory creatures that hunt by heartbeat have entered the barracks. Seven soldiers found dead with no visible cause. Fear itself guides them to their targets.",win:"Soldiers are trained to control their heartbeat using old meditation texts. The Shade Stalkers, starved of signal, leave for easier prey.",lose:"Twenty soldiers dead. The rest refuse to sleep in the barracks. All sleep in the palace halls, cramped and demoralised."},
+{id:85,type:'Monster',name:'The Ancient Golem of Kheth',threat:"A fifty-foot walking fortress of enchanted iron has been activated by unknown parties. Its only programming: reach the capital. It walks through mountains. Three hours away.",win:"The Golem's activation crystal — in its chest cavity — is extracted by a climber mid-stride. It shuts down. The empire strips its enchanted iron for weapons.",lose:"The Golem reaches the walls and walks through them. It reaches the central square and stands dormant. Demolishing it takes six months."},
+{id:86,type:'Sorcerer',name:'Archmage Kelvorn the Fallen',threat:"Archmage Kelvorn — the empire's court wizard for thirty years — has defected after a funding dispute, taking full knowledge of the empire's magical defences with him.",win:"Kelvorn is brought back through a personal appeal from an old colleague. He agrees to return if his research is funded. His constructs are dismantled peacefully.",lose:"Kelvorn destroys the imperial magic academy using knowledge of its defences. Twelve master mages are killed. The empire's magical capability drops by half."},
+{id:87,type:'Sorcerer',name:'The Hex Circle of Morrath',threat:"Thirteen witches working in unison have cursed the entire imperial army. Soldiers' weapons are heavy as stone. Armour weighs double. The army's physical ability has halved overnight.",win:"The Hex Circle's ritual focus — a circle of thirteen stones — is found and three stones removed, breaking the ritual. The curse lifts.",lose:"The army cannot march or fight effectively for five days. During those days, the Bloody Red Army's scouts probe the weakened defences and take two outlying positions."},
+{id:88,type:'Sorcerer',name:'Sorceress Elara the Void-Touched',threat:"Sorceress Elara has opened a portal to a hostile dimension in the city's lower district. Void creatures — formless and destructive — stream through continuously. The portal grows wider every hour.",win:"Elara is reached and persuaded to sacrifice herself to close the portal from inside. Three remaining void creatures are hunted over weeks.",lose:"The portal grows for twelve hours before Elara is killed. Forty void creatures are loose in the city. The lower district is evacuated."},
+{id:89,type:'Sorcerer',name:'The Rune Storm of Vaketh',threat:"A magical tempest has passed over the empire. Every steel weapon and armour piece within the walls has crumbled to powder. The army stands completely unarmed.",win:"Emergency bronze weapons from old armoury vaults — forgotten for two centuries — are distributed. The Rune Storm's caster is assassinated before they can repeat it.",lose:"The Bloody Red Army attacks during the weaponless window knowing of the Rune Storm. 400 soldiers are killed defending with bronze and improvised weapons."},
+{id:90,type:'Sorcerer',name:'The Dream Witch Narova',threat:"The Dream Witch Narova has cursed the army into sleeping. Perfectly alive, breathing peacefully, completely unreachable. The palace guard of 500 and three regiments are asleep at their posts.",win:"Narova's dream anchor — an enchanted hourglass — is smashed by the few unsleeping soldiers. All cursed soldiers wake instantly, confused but unharmed.",lose:"The sleeping army is helpless for 48 hours. Enemy scouts walk unchallenged through every fortification. When soldiers wake, the empire's secrets are comprehensively compromised."},
+{id:91,type:'Sorcerer',name:'The Blood Mage Covenant',threat:"The Blood Mage Covenant performs nightly sacrifice rituals draining the empire's magical ley lines. The empire's protective enchantments — walls, alarms, barriers — are fading. Two days until they are gone.",win:"The Covenant's ritual site is located and destroyed. The ley lines recover. All magical defences are restored. Two Blood Mages are captured.",lose:"The magical defences go dark simultaneously. Enemy spies exploit the 48-hour window to extract enormous amounts of palace intelligence."},
+{id:92,type:'Sorcerer',name:'The Curse of Duskavar',threat:"Duskavar's Curse — activated by the Revenant's death if improperly handled — has activated. Every crop within the capital's walls turns to ash at sunrise. It repeats daily.",win:"Duskavar's original burial site is found and properly consecrated. The curse lifts. The gardens are replanted. Duskavar's spirit is finally at peace.",lose:"The curse lasts a week before being broken — but a week's crops are ash. Emergency rationing is implemented. A black market for food emerges."},
+{id:93,type:'Sorcerer',name:'The Mind Breaker Osseth',threat:"Osseth — a telepath of terrifying ability — has taken control of two imperial generals. They appear normal and attend meetings, but every order they give subtly weakens the empire's position.",win:"Osseth is identified by his limitation — he cannot control left-handed people. A left-handed soldier traces the signal back and neutralises Osseth. Both generals are freed.",lose:"Osseth controls three generals and one minister for a month. Misdirected forces, cancelled supply orders, opened gates — the damage takes three months to fully identify."},
+{id:94,type:'Sorcerer',name:'The Soul Forge of Khet',threat:"The approaching enemy army carries weapons forged from the souls of captured imperial soldiers — your soldiers whose families believe them still alive. The weapons are unbreakable.",win:"The Soul Forge itself is located and destroyed, freeing all captured souls. The weapons crumble. The freed souls return — some to their families in dreams.",lose:"Soul-forged weapons carve through imperial armour without resistance. 600 soldiers fall in a single battle. The prisoners whose souls were forged cannot be rescued."},
+{id:95,type:'Sorcerer',name:'The Temporal Siege',threat:"Enemy soldiers arrive from different moments in time — past and future versions of the same attack, layered. Three simultaneous sieges from different time periods are happening at once.",win:"The Time Anchor — the device sustaining the temporal assault — is found and deactivated. All time-displaced soldiers snap back to their origin moments. The siege collapses.",lose:"The temporal siege overwhelms three gate positions simultaneously. The outer walls are breached twice — once by the past force, once by the future one."},
+{id:96,type:'Political',name:"The Poisoner's Guild",threat:"The Poisoner's Guild has contaminated every food source in the capital simultaneously. The poison is tasteless, delayed by six hours. Half the capital has already eaten.",win:"The antidote — held by the Guild as leverage — is seized before the six hours expire. Every affected citizen receives treatment. The Guild's membership list is confiscated.",lose:"Treatment arrives too late for 3,000 citizens and 200 soldiers. Defence Minister Aldric, who ate early, dies at his desk. The Poisoner's Guild vanishes without a trace."},
+{id:97,type:'Political',name:'The False Emperor Dravos',threat:"The Emperor has been replaced by a doppelganger — False Emperor Dravos — at some point in the last week. The real Emperor is imprisoned in the palace. Dravos has already signed three ruinous edicts.",win:"The real Emperor is found in the wine cellar, bound but unharmed. Dravos is unmasked in the throne room. The three ruinous edicts are voided.",lose:"Dravos signs a treaty ceding two provinces before being unmasked. The treaty is legally binding. The real Emperor must honour a treaty he never signed."},
+{id:98,type:'Political',name:'The Grand Betrayal',threat:"Every minister on the Defence Council has been revealed as a foreign spy — all turned years ago. Every meeting for two years was relayed to the enemy. Everything is compromised.",win:"The ministers are arrested simultaneously before they can act on the revelation. Emergency replacements are made. A full audit of two years of damage is carried out.",lose:"Three ministers destroy critical documents before arrest. Two escape. The empire rebuilds its entire intelligence network from nothing."},
+{id:99,type:'Political',name:'Sir Davos the Fallen Knight',threat:"Sir Davos the Knight — the empire's greatest living champion, undefeated in 200 duels — has defected to the enemy. He cites the empire's corruption and names the Emperor personally.",win:"Sir Davos's corruption evidence is addressed publicly. The corruption is found real — three officials are removed. Davos, seeing genuine change, returns. The people respect both acts.",lose:"Sir Davos leads the enemy's vanguard against his former comrades. He defeats twelve imperial champions in succession. Soldiers he trained refuse to fight him."},
+{id:100,type:'Political',name:'The Night of Long Knives',threat:"A coordinated assassination of every military commander above captain rank has begun simultaneously. Sixteen commanders are already dead. You have minutes before the next wave launches.",win:"The assassins' signal network is severed before the final wave. Nine commanders survive. The network is traced to the Iron Veil Alliance. A decisive counter-strike is launched.",lose:"Twenty-three commanders are dead by sunrise. The empire's military leadership is completely decapitated. For one week, the empire has no coherent military command. Enemies move immediately."},
+];
+
+const THREAT_COLOR={Dragon:'#c97a2a',Undead:'#7a7add',Plague:'#2d8a3e',Army:T.crimson,Monster:'#2d8a8a',Sorcerer:'#aa7add',Political:'#4a8aaa'};
+const WCATS={Core:['Pushups','Leg Raises','Plank','Crunches','Mountain Climbers','Sit-ups'],Chest:['Bench Press','Chest Dips','Chest Flys','Push-up Variations','Cable Crossover','Incline Press'],Glutes:['Squats','Lunges','Hip Thrusts','Glute Bridges','Donkey Kicks'],Arms:['Bicep Curls','Tricep Dips','Shoulder Press','Pull-ups','Lateral Raises'],Cardio:['Walk','Run','Cycling','Jump Rope','Swimming'],Mixed:['Burpees','HIIT','Circuit Training','Yoga','CrossFit']};
+const YTYPES={income:{label:'New Money',color:'#2d8a3e',sym:'↑'},expense:{label:'Expense',color:T.crimson,sym:'↓'},investment:{label:'Investment',color:'#1a6aaa',sym:'◆'},loan:{label:'Loan Payoff',color:T.gold,sym:'✓'}};
+const TRIGGERS=['Stress','Boredom','Sadness','Social','Anxiety','Habit','Celebration','Loneliness','Other'];
+const MISS_REASONS=['Too sad','Binge eating','No time','Sick','Other commitment','Forgot','Other'];
+const CONN_TYPES=['Friend','Family','Work','School','Online','Networking','Local','Community'];
+const TRUST_LEVELS=['Inner circle','Trusted','Casual','Professional only','Low trust','Avoid sensitive info'];
+const ENERGY_OPTS=['Motivating','Smart','Fun','Calm','Ambitious','Reliable','Inspiring','Creative','Draining','Negative','Flaky','Ego-heavy','Opportunistic'];
+const POWER_OPTS=['Connector','High status','Skilled communicator','Fast responder','Good collaborator','Time-waster','Good influence','Bad influence','Long-term value','Short-term only'];
+const UTIL_CATS={Career:['Jobs','Referrals','Hiring','Resume','Interviews'],Business:['Startup','Sales','Clients','Investing','Marketing'],Learning:['Programming','AI','Math','Language','Research'],Lifestyle:['Fitness','Fashion','Nutrition','Travel','Productivity'],Entertainment:['Gaming','Anime','Movies','Music','Sports'],Social:['Deep talks','Networking','Events','Dating advice','Emotional support']};
+const INTERESTS=['AI','Startups','Gym','Gaming','Fashion','Crypto','Photography','Football','Books','Tech','Content creation','Design','Psychology','Finance','Music','Art','Travel'];
+
+// ── HELPERS ───────────────────────────────────────────────────────────
+const Chip=({label,active,color=T.gold,onClick,sm})=>(
+  <button onClick={onClick} style={{background:active?color+'33':'transparent',border:`1px solid ${active?color:T.border}`,borderRadius:20,padding:sm?'3px 9px':'5px 12px',cursor:'pointer',color:active?color:T.dim,fontSize:sm?10:12,fontFamily:'inherit',minHeight:sm?28:36,touchAction:'manipulation',whiteSpace:'nowrap'}}>{label}</button>
+);
+const GraphPanel=({title,data,dataKey,color,range,setRange})=>(
+  <div style={S.card}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+      <span style={{color:T.gold,fontSize:12,fontWeight:600}}>{title}</span>
+      <div style={{display:'flex',gap:3}}>
+        {['7D','14D','30D','90D','ALL'].map(r=><button key={r} onClick={()=>setRange(r)} style={{...S.btnO,padding:'3px 7px',fontSize:9,minHeight:28,background:r===range?T.gold:'transparent',color:r===range?'#000':T.gold}}>{r}</button>)}
+      </div>
+    </div>
+    <ResponsiveContainer width="100%" height={130}>
+      <AreaChart data={data}><CartesianGrid strokeDasharray="3 3" stroke={T.border}/><XAxis dataKey="date" tick={{fill:T.muted,fontSize:8}}/><YAxis tick={{fill:T.muted,fontSize:8}} width={28}/><Tooltip contentStyle={{background:T.card,border:`1px solid ${T.border}`,color:T.text,fontSize:11}}/><Area type="monotone" dataKey={dataKey} stroke={color} fill={color+'22'} strokeWidth={2} dot={false}/></AreaChart>
+    </ResponsiveContainer>
+  </div>
+);
+const buildGraph=(logs,field,range)=>{
+  const days=range==='7D'?7:range==='14D'?14:range==='30D'?30:range==='90D'?90:180;
+  return Array.from({length:days},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(days-1-i));const key=d.toISOString().split('T')[0];return{date:fmt(key),[field]:(logs[key]||{})[field]??0};});
+};
+
+// ── TOP BAR ───────────────────────────────────────────────────────────
+const TopBar=({settings,page})=>{
+  const idx=(settings.pageCommanders||{})[page]??0;
+  const cmd=settings.commanderNames?.[idx]||'—';
+  return(
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 14px',background:'#090912',borderBottom:`1px solid ${T.border}`,flexShrink:0,minHeight:48}}>
+      <div style={{display:'flex',flexDirection:'column',gap:1,maxWidth:140}}>
+        <span style={{color:T.gold,fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:.3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{settings.emperorName}{settings.capitalName?` · ${settings.capitalName}`:''}</span>
+        <span style={{color:T.muted,fontSize:8}}>{cmd}</span>
+      </div>
+      <span style={{color:T.gold,fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:4,opacity:.7}}>SOVEREIGN</span>
+      <span style={{color:T.muted,fontSize:8}}>{new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</span>
+    </div>
+  );
+};
+
+// ── BOTTOM NAV ────────────────────────────────────────────────────────
+const BottomNav=({page,setPage})=>{
+  const ref=useRef(null);
+  useEffect(()=>{const el=ref.current?.querySelector(`[data-id="${page}"]`);if(el)el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});},[page]);
+  return(
+    <div style={{background:'#090912',borderTop:`1px solid ${T.border}`,flexShrink:0,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+      <div ref={ref} style={{display:'flex',padding:'3px 4px',gap:1,width:'max-content',minWidth:'100%'}}>
+        {NAV.map(n=>(
+          <button key={n.id} data-id={n.id} onClick={()=>setPage(n.id)}
+            style={{background:page===n.id?T.goldDim:'transparent',border:`1px solid ${page===n.id?T.gold+'55':'transparent'}`,cursor:'pointer',borderRadius:7,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'4px 9px',gap:2,minHeight:50,minWidth:50,touchAction:'manipulation'}}>
+            <span style={{fontSize:15,color:page===n.id?T.gold:T.muted,lineHeight:1}}>{n.sym}</span>
+            <span style={{color:page===n.id?T.gold:T.dim,fontSize:7,letterSpacing:.3,textTransform:'uppercase',whiteSpace:'nowrap'}}>{n.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────
+const Dashboard=({dailyLogs,settings,todos,campaigns,workouts,academySessions=[]})=>{
+  const td=today(),log=dailyLogs[td]||{};
+  const todayTodos=todos[td]||[];
+  const done=todayTodos.filter(t=>t.done).length;
+  const hasWorkout=workouts.some(w=>w.date===td);
+  const todayAcademy=academySessions.filter(s=>s.date===td).reduce((a,s)=>a+(Number(s.minutes)||0),0);
+  const activeCampaigns=campaigns.filter(c=>c.status==='active');
+  const quotes=settings.motivationQuotes||[];
+  const quote=quotes.length>0?quotes[new Date().getDay()%quotes.length]:null;
+  const stats=[
+    {l:'Water',v:`${log.water||0}L`,c:'#4a9edd'},{l:'Coffee',v:`${log.coffee||0}`,c:'#c97a2a'},
+    {l:'Sleep',v:log.sleepHours?`${log.sleepHours}h`:'—',c:'#7a7add'},{l:'Z Cycle',v:log.zcycle!==undefined?`${log.zcycle>0?'+':''}${log.zcycle}%`:'—',c:'#aa7add'},
+    {l:'Weight',v:log.weight?`${log.weight}kg`:'—',c:T.gold},{l:'Academy',v:todayAcademy?`${todayAcademy}m`:'—',c:'#7a7add'},{l:'Orders',v:`${done}/${todayTodos.length}`,c:'#2d8a3e'},
+  ];
+  return(
+    <div style={{padding:14}}>
+      {quote&&<div style={{...S.card,borderLeft:`3px solid ${T.gold}`,fontStyle:'italic',color:T.muted,fontSize:13,lineHeight:1.6}}>"{quote}"</div>}
+      <div style={{...S.card,textAlign:'center',padding:10,borderTop:`2px solid ${hasWorkout?'#2d8a3e':log.restDay?T.steel:T.border}`}}>
+        <span style={{color:hasWorkout?'#2d8a3e':log.restDay?'#4a8aaa':T.muted,fontSize:11,letterSpacing:2}}>{hasWorkout?'⚔ BATTLE WON':log.restDay?'🛡 REST DAY':'NO BATTLE LOGGED'}</span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
+        {stats.map(s=><div key={s.l} style={{...S.card,marginBottom:0,textAlign:'center',padding:10,borderTop:`2px solid ${s.c}44`}}><div style={{color:s.c,fontSize:17,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{s.v}</div><div style={{color:T.muted,fontSize:8,textTransform:'uppercase',letterSpacing:.5,marginTop:2}}>{s.l}</div></div>)}
+      </div>
+      {activeCampaigns.length>0&&<div style={S.card}><div style={S.h3}>Active Campaigns</div>{activeCampaigns.slice(0,3).map(c=>{const pct=c.target>0?Math.min(100,Math.round((c.current/c.target)*100)):0;return(<div key={c.id} style={{marginBottom:10}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{color:T.text,fontSize:12}}>{c.name}</span><span style={{color:T.gold,fontSize:11}}>{pct}%</span></div><div style={{background:T.border,borderRadius:4,height:4}}><div style={{background:T.gold,width:`${pct}%`,height:4,borderRadius:4}}/></div></div>);})}</div>}
+      {todayTodos.length>0&&<div style={S.card}><div style={S.h3}>Today's Orders</div>{todayTodos.slice(0,5).map(t=><div key={t.id} style={{display:'flex',gap:8,alignItems:'center',marginBottom:6}}><span style={{color:t.done?'#2d8a3e':T.dim}}>{t.done?'✓':'○'}</span><span style={{color:t.done?T.muted:T.text,fontSize:13,textDecoration:t.done?'line-through':'none'}}>{t.text}</span></div>)}</div>}
+    </div>
+  );
+};
+
+// ── VITALS ────────────────────────────────────────────────────────────
+const Vitals=({dailyLogs,setDailyLogs})=>{
+  const td=today(),log=dailyLogs[td]||{};
+  const [range,setRange]=useState('7D');
+  const upd=(key,val)=>{const u={...dailyLogs,[td]:{...(dailyLogs[td]||{}),[key]:val}};setDailyLogs(u);db.set('daily_logs',u);};
+  const calcSleep=(bed,wake)=>{if(!bed||!wake)return null;const[bh,bm]=bed.split(':').map(Number),[wh,wm]=wake.split(':').map(Number);let d=(wh*60+wm)-(bh*60+bm);if(d<0)d+=1440;return Math.round(d/60*10)/10;};
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Vitals</h2>
+      <div style={S.card}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><span style={{color:'#4a9edd',fontWeight:600}}>💧 Water</span><span style={{color:T.gold,fontSize:26,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{log.water||0}L</span></div>
+        <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:8}}>{[0.25,0.5,1,1.5,2,2.5,3].map(v=><Chip key={v} label={`${v}L`} active={log.water===v} color={T.gold} onClick={()=>upd('water',v)} sm/>)}</div>
+        <div style={{display:'flex',gap:8}}><button onClick={()=>upd('water',Math.max(0,Math.round(((log.water||0)-0.25)*100)/100))} style={{...S.btnG,flex:1}}>− 0.25L</button><button onClick={()=>upd('water',Math.round(((log.water||0)+0.25)*100)/100)} style={{...S.btn,flex:2}}>+ 0.25L</button></div>
+      </div>
+      <div style={S.card}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><span style={{color:'#c97a2a',fontWeight:600}}>☕ Coffee</span><span style={{color:T.gold,fontSize:26,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{log.coffee||0}</span></div>
+        <div style={{display:'flex',gap:8}}><button onClick={()=>upd('coffee',Math.max(0,(log.coffee||0)-1))} style={{...S.btnG,flex:1}}>− 1 cup</button><button onClick={()=>upd('coffee',(log.coffee||0)+1)} style={{...S.btn,flex:2}}>Had a cup</button></div>
+        {(log.coffee||0)>=4&&<div style={{color:T.gold,fontSize:11,marginTop:8}}>⚠ High caffeine — watch your sleep</div>}
+      </div>
+      <div style={S.card}>
+        <div style={{color:'#7a7add',fontWeight:600,marginBottom:10}}>😴 Sleep</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:8}}>
+          <div><label style={S.lbl}>Bedtime</label><input type="time" style={S.inp} value={log.bedtime||''} onChange={e=>{const hrs=calcSleep(e.target.value,log.wakeup);const u={...(dailyLogs[td]||{}),bedtime:e.target.value};if(hrs!==null)u.sleepHours=hrs;const updated={...dailyLogs,[td]:u};setDailyLogs(updated);db.set('daily_logs',updated);}}/></div>
+          <div><label style={S.lbl}>Wake Up</label><input type="time" style={S.inp} value={log.wakeup||''} onChange={e=>{const hrs=calcSleep(log.bedtime,e.target.value);const u={...(dailyLogs[td]||{}),wakeup:e.target.value};if(hrs!==null)u.sleepHours=hrs;const updated={...dailyLogs,[td]:u};setDailyLogs(updated);db.set('daily_logs',updated);}}/></div>
+        </div>
+        {log.sleepHours&&<div style={{color:log.sleepHours<6?T.crimson:log.sleepHours>=7?'#2d8a3e':T.gold,fontSize:26,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{log.sleepHours}h <span style={{fontSize:11,fontWeight:400}}>{log.sleepHours<6?'⚠ Low':log.sleepHours>=7?'✓ Good':'~ Marginal'}</span></div>}
+      </div>
+      <GraphPanel title="Water (L)" data={buildGraph(dailyLogs,'water',range)} dataKey="water" color="#4a9edd" range={range} setRange={setRange}/>
+      <GraphPanel title="Coffee (cups)" data={buildGraph(dailyLogs,'coffee',range)} dataKey="coffee" color="#c97a2a" range={range} setRange={setRange}/>
+      <GraphPanel title="Sleep (h)" data={buildGraph(dailyLogs,'sleepHours',range)} dataKey="sleepHours" color="#7a7add" range={range} setRange={setRange}/>
+    </div>
+  );
+};
+
+// ── WORKOUT ───────────────────────────────────────────────────────────
+const Workout=({workouts,setWorkouts})=>{
+  const [cat,setCat]=useState('Core');
+  const [exercise,setExercise]=useState('');
+  const [value,setValue]=useState('');
+  const [unit,setUnit]=useState('reps');
+  const [timer,setTimer]=useState(0);
+  const [timerOn,setTimerOn]=useState(false);
+  const timerRef=useRef(null);
+  const td=today();
+  useEffect(()=>{if(timerOn)timerRef.current=setInterval(()=>setTimer(t=>t+1),1000);else clearInterval(timerRef.current);return()=>clearInterval(timerRef.current);},[timerOn]);
+  const fmtT=s=>`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  const addEx=()=>{if(!exercise||!value)return;const u=[...workouts,{id:Date.now(),date:td,category:cat,exercise,value,unit}];setWorkouts(u);db.set('workouts',u);setValue('');};
+  const delEx=id=>{const u=workouts.filter(w=>w.id!==id);setWorkouts(u);db.set('workouts',u);};
+  const todayW=workouts.filter(w=>w.date===td);
+  const histByDate=workouts.reduce((acc,w)=>{if(!acc[w.date])acc[w.date]=[];acc[w.date].push(w);return acc;},{});
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Warfare</h2>
+      <div style={{...S.card,textAlign:'center'}}>
+        <div style={{color:T.gold,fontFamily:"'Cinzel',serif",fontSize:44,fontWeight:700,letterSpacing:4}}>{fmtT(timer)}</div>
+        <div style={{display:'flex',gap:8,justifyContent:'center',marginTop:10}}>
+          <button onClick={()=>setTimerOn(!timerOn)} style={timerOn?{...S.btnD,flex:2}:{...S.btn,flex:2}}>{timerOn?'⏸ Pause':'▶ Start'}</button>
+          <button onClick={()=>{setTimer(0);setTimerOn(false);}} style={{...S.btnG,flex:1}}>Reset</button>
+        </div>
+      </div>
+      <div style={S.card}>
+        <div style={S.h3}>Log Exercise</div>
+        <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:6,marginBottom:8,WebkitOverflowScrolling:'touch'}}>
+          {Object.keys(WCATS).map(c=><Chip key={c} label={c} active={cat===c} color={T.gold} onClick={()=>{setCat(c);setExercise('');}}/>)}
+        </div>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>{WCATS[cat].map(e=><Chip key={e} label={e} active={exercise===e} color={T.goldLight} onClick={()=>setExercise(e)} sm/>)}</div>
+        <input placeholder="Or type custom exercise" style={{...S.inp,marginBottom:8}} value={exercise} onChange={e=>setExercise(e.target.value)}/>
+        <div style={{display:'flex',gap:8,marginBottom:8}}>
+          <input type="number" placeholder="Value" style={{...S.inp,flex:1}} value={value} onChange={e=>setValue(e.target.value)}/>
+          <select style={{...S.inp,flex:1}} value={unit} onChange={e=>setUnit(e.target.value)}>{['reps','sets','mins','km','m','laps'].map(u=><option key={u}>{u}</option>)}</select>
+        </div>
+        <button onClick={addEx} style={{...S.btn,width:'100%'}}>Log Exercise</button>
+      </div>
+      {todayW.length>0&&<div style={S.card}><div style={S.h3}>Today's Battles</div>{todayW.map(w=><div key={w.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:`1px solid ${T.border}`}}><span style={{color:T.text,fontSize:13}}>{w.exercise}</span><div style={{display:'flex',gap:8,alignItems:'center'}}><span style={{color:T.gold,fontSize:13}}>{w.value} {w.unit}</span><button onClick={()=>delEx(w.id)} style={{background:'none',border:'none',color:T.muted,cursor:'pointer',fontSize:20}}>×</button></div></div>)}</div>}
+      <div style={S.card}><div style={S.h3}>History</div>{Object.entries(histByDate).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,14).map(([date,entries])=><div key={date} style={{marginBottom:10}}><div style={{color:T.gold,fontSize:10,letterSpacing:1,marginBottom:4}}>{fmt(date)}</div>{entries.map(w=><div key={w.id} style={{display:'flex',justifyContent:'space-between',fontSize:12,paddingLeft:8,marginBottom:2}}><span style={{color:T.text}}>{w.exercise}</span><span style={{color:T.muted}}>{w.value} {w.unit}</span></div>)}</div>)}{!workouts.length&&<div style={{color:T.muted,fontSize:12}}>No battles yet.</div>}</div>
+    </div>
+  );
+};
+
+// ── Z CYCLE ───────────────────────────────────────────────────────────
+const ZCycle=({dailyLogs,setDailyLogs})=>{
+  const td=today(),log=dailyLogs[td]||{};
+  const [range,setRange]=useState('14D');
+  const z=log.zcycle!==undefined?log.zcycle:0;
+  const zColor=z>200?'#2d8a3e':z>50?T.gold:z>-50?'#c97a2a':z>-200?T.crimson:'#5a0a0a';
+  const zLabel=z>300?'UNSTOPPABLE':z>150?'Elevated':z>50?'Good':z>0?'Neutral+':z>-50?'Neutral−':z>-150?'Low':z>-300?'Broken':'DESTROYED';
+  const upd=v=>{const u={...dailyLogs,[td]:{...(dailyLogs[td]||{}),zcycle:v}};setDailyLogs(u);db.set('daily_logs',u);};
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Mind — Z Cycle</h2>
+      <div style={S.card}>
+        <div style={{textAlign:'center',marginBottom:16}}><div style={{color:zColor,fontSize:52,fontWeight:700,fontFamily:"'Cinzel',serif",lineHeight:1}}>{z>0?'+':''}{z}%</div><div style={{color:zColor,fontSize:10,letterSpacing:3,textTransform:'uppercase',marginTop:6}}>{zLabel}</div></div>
+        <input type="range" min="-500" max="500" value={z} step="5" style={{width:'100%',accentColor:zColor,height:28}} onChange={e=>upd(Number(e.target.value))}/>
+        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:T.muted,marginBottom:12}}><span>−500%</span><span>0</span><span>+500%</span></div>
+        <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>{[-500,-300,-150,-50,0,50,150,300,500].map(v=><Chip key={v} label={`${v>0?'+':''}${v}%`} active={z===v} color={zColor} onClick={()=>upd(v)} sm/>)}</div>
+      </div>
+      <GraphPanel title="Z Cycle History" data={buildGraph(dailyLogs,'zcycle',range)} dataKey="zcycle" color={zColor} range={range} setRange={setRange}/>
+    </div>
+  );
+};
+
+// ── Y CYCLE ───────────────────────────────────────────────────────────
+const YCycle=({ycycle,setYcycle})=>{
+  const [type,setType]=useState('income');
+  const [amount,setAmount]=useState('');
+  const [desc,setDesc]=useState('');
+  const [range,setRange]=useState('30D');
+  const add=()=>{if(!amount)return;const u=[...ycycle,{id:Date.now(),date:today(),type,amount:Number(amount),desc}];setYcycle(u);db.set('ycycle',u);setAmount('');setDesc('');};
+  const del=id=>{const u=ycycle.filter(e=>e.id!==id);setYcycle(u);db.set('ycycle',u);};
+  const net=ycycle.reduce((a,e)=>e.type==='income'?a+e.amount:a-e.amount,0);
+  const days=range==='7D'?7:range==='14D'?14:range==='30D'?30:range==='90D'?90:365;
+  const graphData=(()=>{let r=0;return Array.from({length:days},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(days-1-i));const key=d.toISOString().split('T')[0];ycycle.filter(e=>e.date===key).forEach(e=>{r+=e.type==='income'?e.amount:-e.amount;});return{date:fmt(key),balance:Math.round(r)};});})();
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Treasury — Y Cycle</h2>
+      <div style={{...S.card,textAlign:'center',borderTop:`3px solid ${net>=0?'#2d8a3e':T.crimson}`}}><div style={{color:T.muted,fontSize:9,letterSpacing:2}}>NET BALANCE</div><div style={{color:net>=0?'#2d8a3e':T.crimson,fontSize:38,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{net>=0?'+':''}{net.toLocaleString()}</div></div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>{Object.entries(YTYPES).map(([k,v])=>{const total=ycycle.filter(e=>e.type===k).reduce((a,e)=>a+e.amount,0);return<div key={k} style={{...S.card,marginBottom:0,textAlign:'center',padding:10}}><div style={{color:T.muted,fontSize:9}}>{v.label}</div><div style={{color:v.color,fontSize:16,fontWeight:700}}>{v.sym}{total.toLocaleString()}</div></div>;})}</div>
+      <div style={S.card}>
+        <div style={S.h3}>Log Entry</div>
+        <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:6,marginBottom:10}}>{Object.entries(YTYPES).map(([k,v])=><button key={k} onClick={()=>setType(k)} style={{...S.btnG,whiteSpace:'nowrap',background:type===k?v.color+'33':'transparent',color:type===k?v.color:T.muted,border:`1px solid ${type===k?v.color:T.border}`}}>{v.sym} {v.label}</button>)}</div>
+        <input type="number" placeholder="Amount" style={{...S.inp,marginBottom:8}} value={amount} onChange={e=>setAmount(e.target.value)}/>
+        <input placeholder="Description" style={{...S.inp,marginBottom:8}} value={desc} onChange={e=>setDesc(e.target.value)}/>
+        <button onClick={add} style={{...S.btn,width:'100%'}}>Add Entry</button>
+      </div>
+      <GraphPanel title="Net Balance" data={graphData} dataKey="balance" color={T.gold} range={range} setRange={setRange}/>
+      <div style={S.card}><div style={S.h3}>Entries</div>{ycycle.slice().reverse().slice(0,20).map(e=><div key={e.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:`1px solid ${T.border}`}}><div style={{flex:1}}><div style={{color:T.text,fontSize:12}}>{e.desc||YTYPES[e.type]?.label}</div><div style={{color:T.muted,fontSize:9}}>{fmt(e.date)}</div></div><span style={{color:YTYPES[e.type]?.color,fontSize:14,fontWeight:600,marginRight:10}}>{YTYPES[e.type]?.sym}{e.amount.toLocaleString()}</span><button onClick={()=>del(e.id)} style={{background:'none',border:'none',color:T.muted,cursor:'pointer',fontSize:20}}>×</button></div>)}{!ycycle.length&&<div style={{color:T.muted,fontSize:12}}>No entries yet.</div>}</div>
+    </div>
+  );
+};
+
+// ── FOOD CYCLE ────────────────────────────────────────────────────────
+const FoodCycle=({foodLogs,setFoodLogs})=>{
+  const [reason,setReason]=useState('');const [trigger,setTrigger]=useState('');const [notes,setNotes]=useState('');const [range,setRange]=useState('30D');
+  const add=()=>{if(!reason.trim()&&!trigger)return;const u=[...foodLogs,{id:Date.now(),date:today(),reason,trigger,notes}];setFoodLogs(u);db.set('food_logs',u);setReason('');setTrigger('');setNotes('');};
+  const del=id=>{const u=foodLogs.filter(f=>f.id!==id);setFoodLogs(u);db.set('food_logs',u);};
+  const tCounts=TRIGGERS.map(t=>({t,n:foodLogs.filter(f=>f.trigger===t).length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n);
+  const days=range==='7D'?7:range==='14D'?14:range==='30D'?30:range==='90D'?90:180;
+  const gData=Array.from({length:days},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(days-1-i));const key=d.toISOString().split('T')[0];return{date:fmt(key),events:foodLogs.filter(f=>f.date===key).length};});
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Rations — Food Cycle</h2>
+      <div style={S.card}><div style={S.h3}>Log Event</div><textarea placeholder="What happened?" style={{...S.inp,height:70,resize:'vertical',marginBottom:8}} value={reason} onChange={e=>setReason(e.target.value)}/><div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:8}}>{TRIGGERS.map(t=><Chip key={t} label={t} active={trigger===t} color={T.crimson} onClick={()=>setTrigger(trigger===t?'':t)} sm/>)}</div><input placeholder="Extra notes (optional)" style={{...S.inp,marginBottom:8}} value={notes} onChange={e=>setNotes(e.target.value)}/><button onClick={add} style={{...S.btn,width:'100%'}}>Log Event</button></div>
+      {tCounts.length>0&&<div style={S.card}><div style={S.h3}>Trigger Patterns</div>{tCounts.map(({t,n})=><div key={t} style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{color:T.text,fontSize:11,width:80}}>{t}</span><div style={{flex:1,background:T.border,borderRadius:4,height:6}}><div style={{background:T.crimson,width:`${(n/foodLogs.length)*100}%`,height:6,borderRadius:4}}/></div><span style={{color:T.muted,fontSize:10,width:16}}>{n}</span></div>)}</div>}
+      <GraphPanel title="Food Events" data={gData} dataKey="events" color={T.crimson} range={range} setRange={setRange}/>
+      <div style={S.card}><div style={S.h3}>Log</div>{foodLogs.slice().reverse().slice(0,15).map(f=><div key={f.id} style={{padding:'7px 0',borderBottom:`1px solid ${T.border}`}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{color:T.muted,fontSize:10}}>{fmt(f.date)}</span><div style={{display:'flex',gap:6,alignItems:'center'}}>{f.trigger&&<span style={{color:T.crimson,fontSize:9,background:'#1a0808',padding:'1px 6px',borderRadius:8}}>{f.trigger}</span>}<button onClick={()=>del(f.id)} style={{background:'none',border:'none',color:T.muted,cursor:'pointer',fontSize:20}}>×</button></div></div>{f.reason&&<div style={{color:T.text,fontSize:12,marginTop:3}}>{f.reason}</div>}</div>)}{!foodLogs.length&&<div style={{color:T.muted,fontSize:12}}>No events logged.</div>}</div>
+    </div>
+  );
+};
+
+// ── LORE ──────────────────────────────────────────────────────────────
+const LorePage=({stories,setStories})=>{
+  const [title,setTitle]=useState('');const [content,setContent]=useState('');const [editId,setEditId]=useState(null);
+  const save=()=>{if(!content.trim())return;if(editId){const u=stories.map(e=>e.id===editId?{...e,title,content}:e);setStories(u);db.set('stories',u);setEditId(null);}else{const u=[...stories,{id:Date.now(),date:today(),title,content}];setStories(u);db.set('stories',u);}setTitle('');setContent('');};
+  const del=id=>{const u=stories.filter(e=>e.id!==id);setStories(u);db.set('stories',u);};
+  const startEdit=e=>{setTitle(e.title);setContent(e.content);setEditId(e.id);};
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Lore — The Chronicles</h2>
+      <div style={S.card}><input placeholder="Entry title (optional)" style={{...S.inp,marginBottom:8}} value={title} onChange={e=>setTitle(e.target.value)}/><textarea placeholder="Write your lore, chronicle, story..." style={{...S.inp,height:160,resize:'vertical',marginBottom:8}} value={content} onChange={e=>setContent(e.target.value)}/><div style={{display:'flex',gap:8}}><button onClick={save} style={{...S.btn,flex:2}}>{editId?'Update Entry':'Save Entry'}</button>{editId&&<button onClick={()=>{setEditId(null);setTitle('');setContent('');}} style={{...S.btnG,flex:1}}>Cancel</button>}</div></div>
+      {stories.slice().reverse().map(e=><div key={e.id} style={S.card}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}><div>{e.title&&<div style={{color:T.gold,fontSize:14,fontFamily:"'Cinzel',serif",fontWeight:600}}>{e.title}</div>}<div style={{color:T.muted,fontSize:10}}>{fmt(e.date)}</div></div><div style={{display:'flex',gap:6}}><button onClick={()=>startEdit(e)} style={{...S.btnG,padding:'4px 10px',fontSize:11,minHeight:32}}>Edit</button><button onClick={()=>del(e.id)} style={{...S.btnD,padding:'4px 10px',fontSize:11,minHeight:32}}>Del</button></div></div><div style={{color:T.text,fontSize:13,lineHeight:1.8,whiteSpace:'pre-wrap'}}>{e.content}</div></div>)}
+      {!stories.length&&<div style={{color:T.muted,textAlign:'center',padding:40,fontSize:13}}>The chronicles await your words.</div>}
+    </div>
+  );
+};
+
+// ── DAILY CHALLENGE ───────────────────────────────────────────────────
+const DailyChallenge=({challengeLog,setChallengeLog})=>{
+  const [timeLeft,setTimeLeft]=useState('');
+  const td=today();
+  const dayIdx=Math.floor(Date.now()/86400000);
+  const threat=THREATS[dayIdx%THREATS.length];
+  const entry=challengeLog[td]||{};
+  const outcome=entry.outcome;
+  const challengeDefinition=entry.challengeDefinition||'';
+  const challengeStatus=entry.challengeStatus||'Not started';
+  const tc=THREAT_COLOR[threat.type]||T.gold;
+  const updateChallengeField=(key,val)=>{
+    const u={...challengeLog,[td]:{...entry,threatId:threat.id,[key]:val}};
+    setChallengeLog(u);
+    db.set('challenge_log',u);
+  };
+  const calcTime=()=>{const midnight=new Date();midnight.setHours(0,0,0,0);const expiry=midnight.getTime()+25*3600000;const diff=Math.max(0,expiry-Date.now());const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;};
+  useEffect(()=>{
+    setTimeLeft(calcTime());
+    const iv=setInterval(()=>{
+      const t=calcTime();
+      setTimeLeft(t);
+      if(t==='00:00:00'&&!outcome){const u={...challengeLog,[td]:{...entry,threatId:threat.id,outcome:'lost'}};setChallengeLog(u);db.set('challenge_log',u);}
+    },1000);
+    return()=>clearInterval(iv);
+  },[outcome,td]);
+  const resolve=result=>{const u={...challengeLog,[td]:{...entry,threatId:threat.id,outcome:result}};setChallengeLog(u);db.set('challenge_log',u);};
+  return(
+    <div style={{...S.card,borderLeft:`3px solid ${tc}`,background:'#080810',marginBottom:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+        <div style={{flex:1}}>
+          <div style={{color:tc,fontSize:9,letterSpacing:1.5,textTransform:'uppercase',marginBottom:4}}>{threat.type} · Threat #{threat.id}/100</div>
+          <div style={{color:T.text,fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:600,lineHeight:1.2}}>{threat.name}</div>
+        </div>
+        {!outcome&&<div style={{textAlign:'right',flexShrink:0,marginLeft:10}}><div style={{color:timeLeft<'02:00:00'?T.crimson:T.gold,fontFamily:"'Cinzel',serif",fontSize:18,fontVariantNumeric:'tabular-nums'}}>{timeLeft}</div><div style={{color:T.muted,fontSize:8}}>remaining</div></div>}
+      </div>
+      <div style={{color:T.muted,fontSize:12,lineHeight:1.6,marginBottom:12}}>{threat.threat}</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr',gap:8,marginBottom:12}}>
+        <div>
+          <label style={S.lbl}>Define the Challenge</label>
+          <textarea
+            placeholder="What exactly must be done today to defeat this threat?"
+            style={{...S.inp,height:70,resize:'vertical'}}
+            value={challengeDefinition}
+            onChange={e=>updateChallengeField('challengeDefinition',e.target.value)}
+          />
+        </div>
+        <div>
+          <label style={S.lbl}>Challenge Status</label>
+          <select
+            style={S.inp}
+            value={challengeStatus}
+            onChange={e=>updateChallengeField('challengeStatus',e.target.value)}
+          >
+            <option>Not started</option>
+            <option>In progress</option>
+            <option>Blocked</option>
+            <option>Completed</option>
+            <option>Failed</option>
+          </select>
+        </div>
+      </div>
+      {!outcome?(
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>resolve('won')} style={{...S.btn,flex:2,background:'#1a5c2a',fontSize:13}}>⚔ Defeated</button>
+          <button onClick={()=>resolve('lost')} style={{...S.btnD,flex:1,fontSize:12}}>Expired</button>
+        </div>
+      ):(
+        <div style={{background:outcome==='won'?'#0a1a0a':'#1a0808',border:`1px solid ${outcome==='won'?'#2d8a3e':T.crimson}`,borderRadius:8,padding:'10px 12px'}}>
+          <div style={{color:outcome==='won'?'#2d8a3e':T.crimson,fontSize:9,letterSpacing:1.5,textTransform:'uppercase',marginBottom:6}}>{outcome==='won'?'⚔ VICTORY — THREAT ELIMINATED':'✗ DEFEAT — THE ENEMY PREVAILS'}</div>
+          <div style={{color:T.text,fontSize:12,lineHeight:1.6}}>{outcome==='won'?threat.win:threat.lose}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── CAMPAIGNS ─────────────────────────────────────────────────────────
+const Campaigns=({campaigns,setCampaigns,challengeLog,setChallengeLog})=>{
+  const [showNew,setShowNew]=useState(false);
+  const [form,setForm]=useState({name:'',type:'custom',target:'',startDate:today(),endDate:'',celebNote:'',failNote:''});
+  const add=()=>{if(!form.name||!form.target||!form.endDate)return;const u=[...campaigns,{id:Date.now(),name:form.name,type:form.type,target:Number(form.target),current:0,startDate:form.startDate,endDate:form.endDate,status:'active',celebrationNote:form.celebNote,failureNote:form.failNote}];setCampaigns(u);db.set('campaigns',u);setForm({name:'',type:'custom',target:'',startDate:today(),endDate:'',celebNote:'',failNote:''});setShowNew(false);};
+  const upd=(id,changes)=>{const u=campaigns.map(c=>c.id===id?{...c,...changes}:c);setCampaigns(u);db.set('campaigns',u);};
+  const del=id=>{const u=campaigns.filter(c=>c.id!==id);setCampaigns(u);db.set('campaigns',u);};
+  const sColor={active:T.gold,completed:'#2d8a3e',failed:T.crimson};
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Campaign — War Room</h2>
+      <div style={{color:T.gold,fontSize:10,letterSpacing:2,textTransform:'uppercase',marginBottom:10}}>⚔ Daily Threat</div>
+      <DailyChallenge challengeLog={challengeLog} setChallengeLog={setChallengeLog}/>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={{color:T.gold,fontSize:10,letterSpacing:2,textTransform:'uppercase'}}>Your Campaigns</div>
+        <button onClick={()=>setShowNew(!showNew)} style={{...S.btn,padding:'9px 14px',fontSize:13}}>+ New</button>
+      </div>
+      {showNew&&<div style={{...S.card,marginBottom:14}}>
+        <div style={S.h3}>Launch Campaign</div>
+        <input placeholder="Campaign name *" style={{...S.inp,marginBottom:8}} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
+        <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:8}}>{['weight','finance','fitness','sleep','custom'].map(t=><Chip key={t} label={t} active={form.type===t} color={T.gold} onClick={()=>setForm(f=>({...f,type:t}))} sm/>)}</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+          <div><label style={S.lbl}>Start</label><input type="date" style={S.inp} value={form.startDate} onChange={e=>setForm(f=>({...f,startDate:e.target.value}))}/></div>
+          <div><label style={S.lbl}>End *</label><input type="date" style={S.inp} value={form.endDate} onChange={e=>setForm(f=>({...f,endDate:e.target.value}))}/></div>
+        </div>
+        <input type="number" placeholder="Target value *" style={{...S.inp,marginBottom:8}} value={form.target} onChange={e=>setForm(f=>({...f,target:e.target.value}))}/>
+        <input placeholder="Victory note (if won)" style={{...S.inp,marginBottom:8}} value={form.celebNote} onChange={e=>setForm(f=>({...f,celebNote:e.target.value}))}/>
+        <input placeholder="Defeat note (if lost)" style={{...S.inp,marginBottom:8}} value={form.failNote} onChange={e=>setForm(f=>({...f,failNote:e.target.value}))}/>
+        <div style={{display:'flex',gap:8}}><button onClick={add} style={{...S.btn,flex:2}}>Launch</button><button onClick={()=>setShowNew(false)} style={{...S.btnG,flex:1}}>Cancel</button></div>
+      </div>}
+      {['active','completed','failed'].map(status=>{
+        const list=campaigns.filter(c=>c.status===status);if(!list.length)return null;
+        return<div key={status}><div style={{color:sColor[status],fontSize:10,letterSpacing:2,textTransform:'uppercase',margin:'14px 0 8px'}}>{status}</div>{list.map(c=>{const pct=c.target>0?Math.min(100,Math.round((c.current/c.target)*100)):0;const dLeft=Math.ceil((new Date(c.endDate)-new Date())/86400000);return<div key={c.id} style={{...S.card,borderLeft:`3px solid ${sColor[status]}`}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}><div style={{flex:1}}><div style={{color:T.text,fontWeight:600,fontSize:14}}>{c.name}</div><div style={{color:T.muted,fontSize:10}}>{c.type} · {fmt(c.startDate)} → {fmt(c.endDate)}</div></div><div style={{textAlign:'right'}}><div style={{color:sColor[status],fontSize:22,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{pct}%</div>{status==='active'&&<div style={{color:dLeft<3?T.crimson:T.muted,fontSize:9}}>{dLeft}d left</div>}</div></div><div style={{background:T.border,borderRadius:4,height:5,marginBottom:10}}><div style={{background:sColor[status],width:`${pct}%`,height:5,borderRadius:4}}/></div><div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}><input type="number" placeholder="Update progress" defaultValue={c.current||''} style={{...S.inp,flex:1,minWidth:100}} onChange={e=>upd(c.id,{current:Number(e.target.value)})}/>{status==='active'&&<><button onClick={()=>upd(c.id,{status:'completed'})} style={{...S.btn,padding:'9px 10px',fontSize:12,background:'#1a5c2a'}}>✓ Won</button><button onClick={()=>upd(c.id,{status:'failed'})} style={{...S.btnD,padding:'9px 10px',fontSize:12}}>✗ Failed</button></>}</div><button onClick={()=>del(c.id)} style={{...S.btnG,marginTop:8,fontSize:11,padding:'5px 10px',minHeight:32}}>Delete</button>{status==='completed'&&c.celebrationNote&&<div style={{color:'#2d8a3e',fontSize:12,marginTop:8,fontStyle:'italic'}}>🏆 {c.celebrationNote}</div>}{status==='failed'&&c.failureNote&&<div style={{color:T.crimson,fontSize:12,marginTop:8,fontStyle:'italic'}}>⚔ {c.failureNote}</div>}</div>;})};</div>;
+      })}
+      {!campaigns.length&&<div style={{color:T.muted,textAlign:'center',padding:30,fontSize:13}}>No personal campaigns yet. Launch your first above.</div>}
+    </div>
+  );
+};
+
+// ── WEIGHT CALENDAR ───────────────────────────────────────────────────
+const WeightCalendar=({dailyLogs,setDailyLogs,settings,workouts,academySessions=[],disciplines=[]})=>{
+  const [inputW,setInputW]=useState('');const [viewMonth,setViewMonth]=useState(new Date());const [range,setRange]=useState('30D');
+  const logWeight=()=>{if(!inputW)return;const u={...dailyLogs,[today()]:{...(dailyLogs[today()]||{}),weight:Number(inputW)}};setDailyLogs(u);db.set('daily_logs',u);setInputW('');};
+  const toggleRest=date=>{const u={...dailyLogs,[date]:{...(dailyLogs[date]||{}),restDay:!(dailyLogs[date]?.restDay)}};setDailyLogs(u);db.set('daily_logs',u);};
+  const y=viewMonth.getFullYear(),m=viewMonth.getMonth();
+  const firstDay=new Date(y,m,1).getDay(),daysInMonth=new Date(y,m+1,0).getDate();
+  const cells=[...Array(firstDay).fill(null),...Array.from({length:daysInMonth},(_,i)=>i+1)];
+  const dayBg=day=>{const key=`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;const l=dailyLogs[key]||{};if(l.restDay)return'#0a1a2a';if(workouts.some(w=>w.date===key))return'#0a2a0a';if(new Date(key)<new Date(today()))return'#1a0808';return T.card;};
+  const days=range==='7D'?7:range==='14D'?14:range==='30D'?30:range==='90D'?90:180;
+  const graphData=(()=>{const pts=[];for(let i=days-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const key=d.toISOString().split('T')[0];const w=(dailyLogs[key]||{}).weight;if(w)pts.push({date:fmt(key),weight:w,target:settings.targetWeight});}return pts;})();
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>War Map — Weight</h2>
+      <div style={S.card}><div style={{display:'flex',gap:8,alignItems:'center'}}><input type="number" placeholder="Today's weight (kg)" style={{...S.inp,flex:1}} value={inputW} onChange={e=>setInputW(e.target.value)}/><button onClick={logWeight} style={{...S.btn,padding:'11px 16px'}}>Log</button></div>{(dailyLogs[today()]||{}).weight&&<div style={{color:T.gold,fontSize:14,fontWeight:600,marginTop:8}}>{dailyLogs[today()].weight}kg{settings.targetWeight&&<span style={{color:T.muted,fontSize:11,fontWeight:400}}> · Gap: {(dailyLogs[today()].weight-settings.targetWeight).toFixed(1)}kg</span>}</div>}</div>
+      <div style={S.card}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><button onClick={()=>setViewMonth(new Date(y,m-1))} style={{...S.btnG,padding:'7px 14px',minHeight:38}}>‹</button><span style={{color:T.gold,fontFamily:"'Cinzel',serif",fontSize:13}}>{viewMonth.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</span><button onClick={()=>setViewMonth(new Date(y,m+1))} style={{...S.btnG,padding:'7px 14px',minHeight:38}}>›</button></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3}}>
+          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} style={{color:T.dim,fontSize:9,textAlign:'center',paddingBottom:4}}>{d}</div>)}
+          {cells.map((day,i)=>{if(!day)return<div key={i}/>;const key=`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;const l=dailyLogs[key]||{};return<div key={i} onClick={()=>toggleRest(key)} style={{background:dayBg(day),borderRadius:5,padding:'3px 1px',textAlign:'center',cursor:'pointer',border:`1px solid ${key===today()?T.gold:T.border}`,minHeight:34}}><div style={{color:T.muted,fontSize:10}}>{day}</div>{l.weight&&<div style={{color:T.gold,fontSize:8}}>{l.weight}</div>}{l.restDay&&<div style={{color:'#4a8aaa',fontSize:7}}>rest</div>}</div>;})}
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:8,fontSize:9,color:T.muted}}>{[['#0a2a0a','Won'],['#1a0808','Miss'],['#0a1a2a','Rest']].map(([c,l])=><div key={l} style={{display:'flex',gap:4,alignItems:'center'}}><div style={{width:8,height:8,background:c,borderRadius:2,border:`1px solid ${T.border}`}}/><span>{l}</span></div>)}<span>· tap = rest</span></div>
+      </div>
+      <div style={S.card}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}><span style={{color:T.gold,fontSize:12,fontWeight:600}}>Weight Chart</span><div style={{display:'flex',gap:3}}>{['7D','14D','30D','90D','ALL'].map(r=><button key={r} onClick={()=>setRange(r)} style={{...S.btnO,padding:'3px 7px',fontSize:9,minHeight:28,background:r===range?T.gold:'transparent',color:r===range?'#000':T.gold}}>{r}</button>)}</div></div>
+        {graphData.length>0?<ResponsiveContainer width="100%" height={140}><LineChart data={graphData}><CartesianGrid strokeDasharray="3 3" stroke={T.border}/><XAxis dataKey="date" tick={{fill:T.muted,fontSize:8}}/><YAxis tick={{fill:T.muted,fontSize:8}} width={28} domain={['auto','auto']}/><Tooltip contentStyle={{background:T.card,border:`1px solid ${T.border}`,color:T.text,fontSize:11}}/><Line type="monotone" dataKey="weight" stroke={T.gold} strokeWidth={2} dot={{fill:T.gold,r:2}} name="Weight"/>{settings.targetWeight&&<Line type="monotone" dataKey="target" stroke={T.crimson} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Target"/>}</LineChart></ResponsiveContainer>:<div style={{color:T.muted,fontSize:12,textAlign:'center',padding:20}}>Log weight to see chart</div>}
+      </div>
+    </div>
+  );
+};
+
+// ── RELATIONSHIPS ─────────────────────────────────────────────────────
+const emptyForm=()=>({name:'',connectionType:'',utility:[],interests:[],trustLevel:'',energy:[],powerTags:[],lastContacted:'',notes:''});
+const Relationships=({relations,setRelations})=>{
+  const [search,setSearch]=useState('');const [showForm,setShowForm]=useState(false);const [editId,setEditId]=useState(null);const [form,setForm]=useState(emptyForm());
+  const toggle=(field,val)=>setForm(f=>({...f,[field]:f[field].includes(val)?f[field].filter(x=>x!==val):[...f[field],val]}));
+  const trustColor=t=>t==='Inner circle'?T.gold:t==='Trusted'?'#2d8a3e':t==='Low trust'||t==='Avoid sensitive info'?T.crimson:T.border;
+  const save=()=>{if(!form.name.trim())return;if(editId){const u=relations.map(r=>r.id===editId?{...r,...form}:r);setRelations(u);db.set('relations',u);}else{const u=[...relations,{...form,id:Date.now()}];setRelations(u);db.set('relations',u);}setForm(emptyForm());setEditId(null);setShowForm(false);};
+  const del=id=>{const u=relations.filter(r=>r.id!==id);setRelations(u);db.set('relations',u);};
+  const startEdit=r=>{setForm({...r});setEditId(r.id);setShowForm(true);};
+  const filtered=relations.filter(r=>{if(!search)return true;const q=search.toLowerCase();return[r.name,r.connectionType,r.trustLevel,...(r.utility||[]),...(r.interests||[]),...(r.energy||[])].some(v=>v?.toLowerCase().includes(q));});
+  return(
+    <div style={{padding:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><h2 style={{...S.h2,margin:0}}>Alliance — {relations.length}/500</h2><button onClick={()=>{setShowForm(!showForm);setEditId(null);setForm(emptyForm());}} style={{...S.btn,padding:'9px 14px'}}>+ Add</button></div>
+      <input placeholder="Search name, tag, trust..." style={{...S.inp,marginBottom:12}} value={search} onChange={e=>setSearch(e.target.value)}/>
+      {showForm&&<div style={{...S.card,marginBottom:14}}>
+        <div style={S.h3}>{editId?'Edit':'New'} Contact</div>
+        <input placeholder="Name *" style={{...S.inp,marginBottom:8}} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/>
+        <label style={S.lbl}>Connection Type</label><div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}}>{CONN_TYPES.map(t=><Chip key={t} label={t} active={form.connectionType===t} color="#4a8aaa" onClick={()=>setForm(f=>({...f,connectionType:t}))} sm/>)}</div>
+        <label style={S.lbl}>Utility</label>{Object.entries(UTIL_CATS).map(([cat,items])=><div key={cat} style={{marginBottom:8}}><div style={{color:T.dim,fontSize:9,letterSpacing:1,marginBottom:4,textTransform:'uppercase'}}>{cat}</div><div style={{display:'flex',gap:3,flexWrap:'wrap'}}>{items.map(i=><Chip key={i} label={i} active={form.utility.includes(i)} color={T.gold} onClick={()=>toggle('utility',i)} sm/>)}</div></div>)}
+        <label style={{...S.lbl,marginTop:6}}>Interests</label><div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:10}}>{INTERESTS.map(t=><Chip key={t} label={t} active={form.interests.includes(t)} color="#4a9edd" onClick={()=>toggle('interests',t)} sm/>)}</div>
+        <label style={S.lbl}>Trust Level</label><div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}}>{TRUST_LEVELS.map(t=><Chip key={t} label={t} active={form.trustLevel===t} color={trustColor(t)} onClick={()=>setForm(f=>({...f,trustLevel:t}))} sm/>)}</div>
+        <label style={S.lbl}>Energy</label><div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:10}}>{ENERGY_OPTS.map(t=>{const neg=['Draining','Negative','Flaky','Ego-heavy','Opportunistic'].includes(t);return<Chip key={t} label={t} active={form.energy.includes(t)} color={neg?T.crimson:'#2d8a3e'} onClick={()=>toggle('energy',t)} sm/>;})}</div>
+        <label style={S.lbl}>Power Tags</label><div style={{display:'flex',gap:3,flexWrap:'wrap',marginBottom:10}}>{POWER_OPTS.map(t=><Chip key={t} label={t} active={form.powerTags.includes(t)} color="#aa7add" onClick={()=>toggle('powerTags',t)} sm/>)}</div>
+        <label style={S.lbl}>Last Contacted</label><input type="date" style={{...S.inp,marginBottom:8}} value={form.lastContacted} onChange={e=>setForm(f=>({...f,lastContacted:e.target.value}))}/>
+        <textarea placeholder="Notes..." style={{...S.inp,height:60,resize:'vertical',marginBottom:8}} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/>
+        <div style={{display:'flex',gap:8}}><button onClick={save} style={{...S.btn,flex:2}}>{editId?'Update':'Save'}</button><button onClick={()=>{setShowForm(false);setEditId(null);}} style={{...S.btnG,flex:1}}>Cancel</button></div>
+      </div>}
+      {filtered.map(r=>{const daysSince=r.lastContacted?Math.floor((new Date()-new Date(r.lastContacted))/86400000):null;return<div key={r.id} style={{...S.card,borderLeft:`3px solid ${trustColor(r.trustLevel)}`}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}><div style={{flex:1}}><div style={{color:T.text,fontWeight:700,fontSize:15,fontFamily:"'Cinzel',serif"}}>{r.name}</div><div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:4}}>{r.connectionType&&<span style={{color:T.muted,fontSize:9,background:T.input,padding:'1px 7px',borderRadius:8}}>{r.connectionType}</span>}{r.trustLevel&&<span style={{color:trustColor(r.trustLevel),fontSize:9,padding:'1px 7px',borderRadius:8,background:trustColor(r.trustLevel)+'22'}}>{r.trustLevel}</span>}{daysSince!==null&&<span style={{color:daysSince>30?T.crimson:T.muted,fontSize:9}}>{daysSince}d ago</span>}</div>{r.utility?.length>0&&<div style={{color:'#7aaadd',fontSize:10,marginTop:4}}>{r.utility.slice(0,4).join(' · ')}</div>}{r.energy?.length>0&&<div style={{color:'#7add7a',fontSize:10,marginTop:2}}>{r.energy.slice(0,3).join(' · ')}</div>}</div><div style={{display:'flex',gap:5,marginLeft:8}}><button onClick={()=>startEdit(r)} style={{...S.btnG,padding:'3px 9px',fontSize:11,minHeight:32}}>Edit</button><button onClick={()=>del(r.id)} style={{...S.btnD,padding:'3px 9px',fontSize:11,minHeight:32}}>Del</button></div></div></div>;})}
+      {!filtered.length&&<div style={{color:T.muted,textAlign:'center',padding:40,fontSize:13}}>{search?'No contacts match.':'No contacts yet. Build your alliance.'}</div>}
+    </div>
+  );
+};
+
+// ── TO-DO ─────────────────────────────────────────────────────────────
+const TodoList=({todos,setTodos})=>{
+  const [text,setText]=useState('');
+  const td=today(),list=todos[td]||[];
+  const upd=nl=>{const u={...todos,[td]:nl};setTodos(u);db.set('todos',u);};
+  const add=()=>{if(!text.trim())return;upd([...list,{id:Date.now(),text,done:false,missReason:''}]);setText('');};
+  const toggle=id=>upd(list.map(t=>t.id===id?{...t,done:!t.done}:t));
+  const setMiss=(id,r)=>upd(list.map(t=>t.id===id?{...t,missReason:r}:t));
+  const del=id=>upd(list.filter(t=>t.id!==id));
+  const done=list.filter(t=>t.done).length;
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Orders — To-Do</h2>
+      <div style={{...S.card,textAlign:'center'}}><div style={{color:T.gold,fontSize:34,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{done}/{list.length}</div><div style={{color:T.muted,fontSize:9,letterSpacing:1,textTransform:'uppercase'}}>Orders Completed</div>{list.length>0&&<div style={{background:T.border,borderRadius:4,height:5,marginTop:8}}><div style={{background:done===list.length?'#2d8a3e':T.gold,width:`${list.length?(done/list.length)*100:0}%`,height:5,borderRadius:4}}/></div>}</div>
+      <div style={{display:'flex',gap:8,marginBottom:12}}><input placeholder="New order..." style={S.inp} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&add()}/><button onClick={add} style={{...S.btn,padding:'11px 16px'}}>Add</button></div>
+      {list.map(t=><div key={t.id} style={{...S.card,marginBottom:6}}><div style={{display:'flex',alignItems:'center',gap:10}}><button onClick={()=>toggle(t.id)} style={{background:'none',border:`2px solid ${t.done?'#2d8a3e':T.border}`,borderRadius:5,width:26,height:26,cursor:'pointer',color:'#2d8a3e',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>{t.done?'✓':''}</button><span style={{flex:1,color:t.done?T.muted:T.text,textDecoration:t.done?'line-through':'none',fontSize:14}}>{t.text}</span><button onClick={()=>del(t.id)} style={{background:'none',border:'none',color:T.muted,cursor:'pointer',fontSize:22,lineHeight:1}}>×</button></div>{!t.done&&<div style={{marginTop:8,paddingLeft:36,display:'flex',gap:4,flexWrap:'wrap'}}>{MISS_REASONS.map(r=><Chip key={r} label={r} active={t.missReason===r} color={T.crimson} onClick={()=>setMiss(t.id,r)} sm/>)}</div>}</div>)}
+    </div>
+  );
+};
+
+// ── WEEKLY SUMMARY ────────────────────────────────────────────────────
+const WeeklySummary=({dailyLogs,workouts,foodLogs,ycycle})=>{
+  const [offset,setOffset]=useState(0);
+  const getWeek=off=>{const d=new Date(),day=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1)+(off*7));return Array.from({length:7},(_,i)=>{const x=new Date(mon);x.setDate(mon.getDate()+i);return x.toISOString().split('T')[0];});};
+  const dates=getWeek(offset),logs=dates.map(d=>({d,...(dailyLogs[d]||{})}));
+  const avgWater=Math.round((logs.reduce((a,l)=>a+(l.water||0),0)/7)*10)/10;
+  const sLogs=logs.filter(l=>l.sleepHours);const avgSleep=sLogs.length?Math.round((sLogs.reduce((a,l)=>a+l.sleepHours,0)/sLogs.length)*10)/10:0;
+  const zLogs=logs.filter(l=>l.zcycle!==undefined);const avgZ=zLogs.length?Math.round(zLogs.reduce((a,l)=>a+l.zcycle,0)/zLogs.length):0;
+  const coffee=logs.reduce((a,l)=>a+(l.coffee||0),0);const restDays=logs.filter(l=>l.restDay).length;
+  const wonDays=dates.filter(d=>workouts.some(w=>w.date===d)).length;
+  const fEvents=foodLogs.filter(f=>dates.includes(f.date)).length;
+  const income=ycycle.filter(e=>dates.includes(e.date)&&e.type==='income').reduce((a,e)=>a+e.amount,0);
+  const expense=ycycle.filter(e=>dates.includes(e.date)&&e.type==='expense').reduce((a,e)=>a+e.amount,0);
+  return(
+    <div style={{padding:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}><h2 style={{...S.h2,margin:0}}>Intel — Weekly</h2><div style={{display:'flex',gap:5}}><button onClick={()=>setOffset(o=>o-1)} style={{...S.btnG,padding:'7px 12px'}}>‹</button>{offset<0&&<button onClick={()=>setOffset(0)} style={{...S.btnG,padding:'7px 10px',fontSize:11}}>Now</button>}<button onClick={()=>setOffset(o=>Math.min(0,o+1))} style={{...S.btnG,padding:'7px 12px'}} disabled={offset===0}>›</button></div></div>
+      <div style={{color:T.muted,fontSize:11,marginBottom:12}}>{fmt(dates[0])} — {fmt(dates[6])}</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
+        {[[`${wonDays}/${7-restDays}`,'Battles',T.gold],[`${avgWater}L`,'Avg Water','#4a9edd'],[`${avgSleep}h`,'Avg Sleep','#7a7add'],[`${avgZ>0?'+':''}${avgZ}%`,'Avg Z','#aa7add'],[`${coffee}`,'Coffee','#c97a2a'],[`${fEvents}`,'Food Events',fEvents>3?T.crimson:T.muted],[income.toLocaleString(),'Income','#2d8a3e'],[expense.toLocaleString(),'Expense',T.crimson],[`${restDays}`,'Rest Days','#4a8aaa']].map(([v,l,c])=><div key={l} style={{...S.card,marginBottom:0,textAlign:'center',padding:10}}><div style={{color:c,fontSize:16,fontWeight:700}}>{v}</div><div style={{color:T.muted,fontSize:8,textTransform:'uppercase',letterSpacing:.5,marginTop:2}}>{l}</div></div>)}
+      </div>
+      <div style={S.card}><div style={S.h3}>Daily Breakdown</div>{dates.map(d=>{const l=dailyLogs[d]||{},won=workouts.some(w=>w.date===d);return<div key={d} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:`1px solid ${T.border}`}}><span style={{color:T.muted,fontSize:10,width:48}}>{new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</span><span style={{color:won?'#2d8a3e':l.restDay?'#4a8aaa':T.crimson,fontSize:10,width:50}}>{won?'⚔ Won':l.restDay?'🛡 Rest':'— Miss'}</span><span style={{color:'#4a9edd',fontSize:10}}>{l.water||0}L</span><span style={{color:'#7a7add',fontSize:10}}>{l.sleepHours||'—'}h</span><span style={{color:'#aa7add',fontSize:10}}>{l.zcycle!==undefined?`${l.zcycle>0?'+':''}${l.zcycle}%`:'—'}</span><span style={{color:l.weight?T.gold:T.dim,fontSize:10}}>{l.weight?`${l.weight}kg`:'—'}</span></div>;})}</div>
+    </div>
+  );
+};
+
+// ── ROYAL ACADEMY ─────────────────────────────────────────────────────
+const RoyalAcademy=({disciplines,setDisciplines,sessions,setSessions})=>{
+  const [newDisc,setNewDisc]=useState('');const [newColor,setNewColor]=useState('#c9a227');const [selDisc,setSelDisc]=useState(null);const [mins,setMins]=useState('');const [notes,setNotes]=useState('');const [sessDate,setSessDate]=useState(today());const [viewMonth,setViewMonth]=useState(new Date());
+  const addDisc=()=>{if(!newDisc.trim())return;const u=[...disciplines,{id:Date.now(),name:newDisc,color:newColor}];setDisciplines(u);db.set('academy_disciplines',u);setNewDisc('');};
+  const delDisc=id=>{const u=disciplines.filter(d=>d.id!==id);setDisciplines(u);db.set('academy_disciplines',u);};
+  const addSession=()=>{if(!selDisc||!mins)return;const u=[...sessions,{id:Date.now(),date:sessDate,disciplineId:Number(selDisc),minutes:Number(mins),notes}];setSessions(u);db.set('academy_sessions',u);setMins('');setNotes('');};
+  const delSession=id=>{const u=sessions.filter(s=>s.id!==id);setSessions(u);db.set('academy_sessions',u);};
+  const thisMonth=new Date().toISOString().slice(0,7);
+  const monthSess=sessions.filter(s=>s.date.startsWith(thisMonth));
+  const totalMins=monthSess.reduce((a,s)=>a+s.minutes,0);
+  const activeDays=new Set(monthSess.map(s=>s.date)).size;
+  const y=viewMonth.getFullYear(),m=viewMonth.getMonth();
+  const firstDay=new Date(y,m,1).getDay(),daysInMonth=new Date(y,m+1,0).getDate();
+  const cells=[...Array(firstDay).fill(null),...Array.from({length:daysInMonth},(_,i)=>i+1)];
+  const sessForDay=day=>{const key=`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;return sessions.filter(s=>s.date===key);};
+  const getDisc=id=>disciplines.find(d=>String(d.id)===String(id));
+  const fmtMins=n=>n>=60?`${Math.floor(n/60)}h${n%60?` ${n%60}m`:''}`:n>0?`${n}m`:'—';
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Royal Academy</h2>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:10}}>
+        {[[disciplines.length,'Disciplines',T.gold],[fmtMins(totalMins),'This Month','#7a7add'],[activeDays,'Active Days','#2d8a3e']].map(([v,l,c])=><div key={l} style={{...S.card,marginBottom:0,textAlign:'center',padding:10,borderTop:`2px solid ${c}44`}}><div style={{color:c,fontSize:17,fontWeight:700,fontFamily:"'Cinzel',serif"}}>{v}</div><div style={{color:T.muted,fontSize:8,textTransform:'uppercase',letterSpacing:.5,marginTop:2}}>{l}</div></div>)}
+      </div>
+      <div style={S.card}>
+        <div style={S.h3}>Log Study Session</div>
+        {disciplines.length===0?<div style={{color:T.muted,fontSize:12}}>Enrol a discipline below to begin logging sessions.</div>:<>
+          <label style={S.lbl}>Select Discipline</label>
+          <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:10}}>{disciplines.map(d=><Chip key={d.id} label={d.name} active={selDisc===d.id} color={d.color} onClick={()=>setSelDisc(selDisc===d.id?null:d.id)} sm/>)}</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+            <div><label style={S.lbl}>Duration (mins)</label><input type="number" placeholder="e.g. 45" style={S.inp} value={mins} onChange={e=>setMins(e.target.value)}/></div>
+            <div><label style={S.lbl}>Date</label><input type="date" style={S.inp} value={sessDate} onChange={e=>setSessDate(e.target.value)}/></div>
+          </div>
+          <textarea placeholder="Scholar's notes (optional)" style={{...S.inp,height:60,resize:'vertical',marginBottom:8}} value={notes} onChange={e=>setNotes(e.target.value)}/>
+          <button onClick={addSession} style={{...S.btn,width:'100%'}}>Log Session</button>
+        </>}
+      </div>
+      <div style={S.card}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}><button onClick={()=>setViewMonth(new Date(y,m-1))} style={{...S.btnG,padding:'7px 14px',minHeight:38}}>‹</button><span style={{color:T.gold,fontFamily:"'Cinzel',serif",fontSize:13}}>{viewMonth.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</span><button onClick={()=>setViewMonth(new Date(y,m+1))} style={{...S.btnG,padding:'7px 14px',minHeight:38}}>›</button></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:3}}>
+          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} style={{color:T.dim,fontSize:9,textAlign:'center',paddingBottom:4}}>{d}</div>)}
+          {cells.map((day,i)=>{if(!day)return<div key={i}/>;const ds=sessForDay(day);const key=`${y}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;return<div key={i} style={{background:ds.length>0?'#0a0a2a':T.card,borderRadius:5,padding:'3px 1px',textAlign:'center',border:`1px solid ${key===today()?T.gold:T.border}`,minHeight:34}}><div style={{color:T.muted,fontSize:10}}>{day}</div><div style={{display:'flex',gap:1,justifyContent:'center',flexWrap:'wrap',marginTop:1}}>{ds.slice(0,4).map(s=>{const d=getDisc(s.disciplineId);return<div key={s.id} style={{width:5,height:5,borderRadius:'50%',background:d?.color||T.gold}}/>;})}</div></div>;})}
+        </div>
+      </div>
+      <div style={S.card}>
+        <div style={S.h3}>Recent Sessions</div>
+        {sessions.slice().reverse().slice(0,15).map(s=>{const disc=getDisc(s.disciplineId);return<div key={s.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:`1px solid ${T.border}`}}><div style={{flex:1}}><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:8,height:8,borderRadius:'50%',background:disc?.color||T.gold,flexShrink:0}}/><span style={{color:T.text,fontSize:13}}>{disc?.name||'Unknown'}</span></div><div style={{color:T.muted,fontSize:10,marginTop:2,paddingLeft:14}}>{fmt(s.date)} · {fmtMins(s.minutes)}{s.notes&&` · ${s.notes}`}</div></div><button onClick={()=>delSession(s.id)} style={{background:'none',border:'none',color:T.muted,cursor:'pointer',fontSize:20}}>×</button></div>;})}
+        {!sessions.length&&<div style={{color:T.muted,fontSize:12}}>No sessions logged yet. Begin your studies.</div>}
+      </div>
+      <div style={S.card}>
+        <div style={S.h3}>Enrol Disciplines</div>
+        <div style={{display:'flex',gap:8,marginBottom:10}}>
+          <input placeholder="Discipline name..." style={{...S.inp,flex:1}} value={newDisc} onChange={e=>setNewDisc(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addDisc()}/>
+          <input type="color" value={newColor} onChange={e=>setNewColor(e.target.value)} style={{width:46,height:46,border:`1px solid ${T.border}`,borderRadius:8,background:T.input,cursor:'pointer',padding:3,flexShrink:0}}/>
+          <button onClick={addDisc} style={{...S.btn,padding:'11px 14px'}}>Enrol</button>
+        </div>
+        {disciplines.map(d=><div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:`1px solid ${T.border}`}}><div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:12,height:12,borderRadius:'50%',background:d.color}}/><span style={{color:T.text,fontSize:13}}>{d.name}</span><span style={{color:T.muted,fontSize:10}}>{fmtMins(sessions.filter(s=>s.disciplineId===d.id).reduce((a,s)=>a+s.minutes,0))} total</span></div><button onClick={()=>delDisc(d.id)} style={{background:'none',border:'none',color:T.muted,cursor:'pointer',fontSize:20}}>×</button></div>)}
+        {!disciplines.length&&<div style={{color:T.muted,fontSize:12}}>No disciplines enrolled yet.</div>}
+      </div>
+    </div>
+  );
+};
+
+// ── SETTINGS ──────────────────────────────────────────────────────────
+const Settings=({settings,setSettings,dailyLogs,workouts,foodLogs,ycycle,relations,campaigns,stories,todos,disciplines,academySessions,challengeLog})=>{
+  const [form,setForm]=useState({...settings});const [newCmd,setNewCmd]=useState('');const [newQuote,setNewQuote]=useState('');const [saved,setSaved]=useState(false);
+  const save=()=>{setSettings(form);db.set('settings',form);setSaved(true);setTimeout(()=>setSaved(false),2000);};
+  const addCmd=()=>{if(!newCmd.trim())return;setForm(f=>({...f,commanderNames:[...f.commanderNames,newCmd]}));setNewCmd('');};
+  const delCmd=i=>setForm(f=>({...f,commanderNames:f.commanderNames.filter((_,idx)=>idx!==i)}));
+  const addQuote=()=>{if(!newQuote.trim())return;setForm(f=>({...f,motivationQuotes:[...(f.motivationQuotes||[]),newQuote]}));setNewQuote('');};
+  const delQuote=i=>setForm(f=>({...f,motivationQuotes:f.motivationQuotes.filter((_,idx)=>idx!==i)}));
+  const setPageCmd=(pageId,cmdIdx)=>setForm(f=>({...f,pageCommanders:{...(f.pageCommanders||{}),[pageId]:cmdIdx}}));
+  const exportExcel=()=>{
+    const wb=XLSX.utils.book_new();
+    const dlRows=Object.entries(dailyLogs).map(([date,l])=>({Date:date,Water_L:l.water,Coffee:l.coffee,Sleep_h:l.sleepHours,Weight_kg:l.weight,Z_Cycle:l.zcycle,Rest_Day:l.restDay}));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(dlRows),'Daily Logs');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(workouts),'Workouts');
+    const academyRows=academySessions.map(s=>{const d=disciplines.find(x=>x.id===s.disciplineId);return{Date:s.date,Discipline:d?.name||s.disciplineId,Minutes:s.minutes,Notes:s.notes||''};});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(academyRows),'Academy');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(foodLogs),'Food Events');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ycycle),'Y Cycle');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(relations.map(r=>({...r,utility:r.utility?.join(', '),interests:r.interests?.join(', '),energy:r.energy?.join(', '),powerTags:r.powerTags?.join(', ')}))),'Alliance');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(campaigns),'Campaigns');
+    const clRows=Object.entries(challengeLog).map(([date,e])=>{const t=THREATS.find(x=>x.id===e.threatId);return{Date:date,Threat:t?.name,Type:t?.type,Define_Challenge:e.challengeDefinition,Challenge_Status:e.challengeStatus,Outcome:e.outcome};});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(clRows),'Daily Threats');
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(stories),'Lore');
+    const todoRows=Object.entries(todos).flatMap(([date,list])=>list.map(t=>({Date:date,Task:t.text,Done:t.done,Miss_Reason:t.missReason})));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(todoRows),'Orders');
+    const acadRows=academySessions.map(s=>{const d=disciplines.find(x=>x.id===s.disciplineId);return{Date:s.date,Discipline:d?.name,Minutes:s.minutes,Notes:s.notes};});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(acadRows),'Royal Academy');
+    XLSX.writeFile(wb,`SOVEREIGN_${today()}.xlsx`);
+  };
+  return(
+    <div style={{padding:14}}>
+      <h2 style={S.h2}>Forge — Settings</h2>
+      <div style={S.card}>
+        <div style={S.h3}>Emperor & Empire</div>
+        <label style={S.lbl}>Emperor Name</label><input placeholder="Emperor name" style={{...S.inp,marginBottom:10}} value={form.emperorName} onChange={e=>setForm(f=>({...f,emperorName:e.target.value}))}/>
+        <label style={S.lbl}>Capital City</label><input placeholder="Your capital city name..." style={S.inp} value={form.capitalName||''} onChange={e=>setForm(f=>({...f,capitalName:e.target.value}))}/>
+      </div>
+      <div style={S.card}>
+        <div style={S.h3}>Commanders</div>
+        {form.commanderNames.map((c,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,paddingBottom:8,borderBottom:`1px solid ${T.border}`}}><span style={{color:T.text,fontSize:13}}>{c}</span><button onClick={()=>delCmd(i)} style={{...S.btnD,padding:'3px 10px',fontSize:11,minHeight:30}}>Remove</button></div>)}
+        <div style={{display:'flex',gap:8,marginTop:4}}><input placeholder="New commander name" style={S.inp} value={newCmd} onChange={e=>setNewCmd(e.target.value)}/><button onClick={addCmd} style={{...S.btn,padding:'11px 14px'}}>Add</button></div>
+      </div>
+      <div style={S.card}>
+        <div style={S.h3}>Commander per Page</div>
+        {NAV.map(n=><div key={n.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{color:T.text,fontSize:11,width:70}}>{n.label}</span><div style={{display:'flex',gap:3,flexWrap:'wrap',flex:1,justifyContent:'flex-end'}}>{form.commanderNames.map((c,i)=><Chip key={i} label={c.replace('Commander ','')} active={(form.pageCommanders||{})[n.id]===i} color={T.gold} onClick={()=>setPageCmd(n.id,i)} sm/>)}</div></div>)}
+      </div>
+      <div style={S.card}><div style={S.h3}>Weight Goals</div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}><div><label style={S.lbl}>Start (kg)</label><input type="number" style={S.inp} value={form.startWeight||''} onChange={e=>setForm(f=>({...f,startWeight:Number(e.target.value)}))}/></div><div><label style={S.lbl}>Target (kg)</label><input type="number" style={S.inp} value={form.targetWeight||''} onChange={e=>setForm(f=>({...f,targetWeight:Number(e.target.value)}))}/></div></div></div>
+      <div style={S.card}>
+        <div style={S.h3}>Motivation Quotes</div>
+        <div style={{color:T.muted,fontSize:11,marginBottom:8}}>Rotate on Command dashboard. Write your own.</div>
+        {(form.motivationQuotes||[]).map((q,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:7,paddingBottom:7,borderBottom:`1px solid ${T.border}`}}><span style={{color:T.text,fontSize:12,flex:1,fontStyle:'italic',lineHeight:1.5}}>{q}</span><button onClick={()=>delQuote(i)} style={{...S.btnD,padding:'2px 8px',fontSize:11,minHeight:28,marginLeft:8}}>×</button></div>)}
+        <div style={{display:'flex',gap:8,marginTop:4}}><input placeholder="Write a war quote..." style={S.inp} value={newQuote} onChange={e=>setNewQuote(e.target.value)}/><button onClick={addQuote} style={{...S.btn,padding:'11px 14px'}}>Add</button></div>
+      </div>
+      <button onClick={save} style={{...S.btn,width:'100%',padding:14,marginBottom:10,fontSize:15,background:saved?'#1a5c2a':T.gold}}>{saved?'✓ Saved — All changes applied':'Save All Settings'}</button>
+      <div style={S.card}><div style={S.h3}>Export Data</div><div style={{color:T.muted,fontSize:11,marginBottom:10}}>All 14 modules exported as separate Excel sheets.</div><button onClick={exportExcel} style={{...S.btn,background:'#1a5c2a',width:'100%'}}>↓ Export to Excel</button></div>
+    </div>
+  );
+};
+
+// ── MAIN APP ──────────────────────────────────────────────────────────
+const App=()=>{
+  const [page,setPage]=useState('dashboard');
+  const [settings,setSettings]=useState(DEF);
+  const [dailyLogs,setDailyLogs]=useState({});
+  const [workouts,setWorkouts]=useState([]);
+  const [foodLogs,setFoodLogs]=useState([]);
+  const [ycycle,setYcycle]=useState([]);
+  const [relations,setRelations]=useState([]);
+  const [campaigns,setCampaigns]=useState([]);
+  const [stories,setStories]=useState([]);
+  const [todos,setTodos]=useState({});
+  const [challengeLog,setChallengeLog]=useState({});
+  const [disciplines,setDisciplines]=useState([]);
+  const [academySessions,setAcademySessions]=useState([]);
+  const [musicOn,setMusicOn]=useState(localStorage.getItem('sovereign_music')!=='off');
+  const toggleMusic=()=>{
+    const audio=document.getElementById('imperial-audio');
+    if(!audio)return;
+    audio.volume=0.12;
+    if(audio.paused){
+      audio.play().then(()=>{
+        setMusicOn(true);
+        localStorage.setItem('sovereign_music','on');
+      }).catch(err=>console.warn('Audio blocked until user taps again',err));
+    }else{
+      audio.pause();
+      setMusicOn(false);
+      localStorage.setItem('sovereign_music','off');
+    }
+  };
+  useEffect(()=>{
+    const audio=document.getElementById('imperial-audio');
+    if(!audio)return;
+    audio.volume=0.12;
+    if(localStorage.getItem('sovereign_music')==='off'){
+      setMusicOn(false);
+      return;
+    }
+    const tryPlay=()=>{
+      audio.play().then(()=>setMusicOn(true)).catch(()=>setMusicOn(false));
+      window.removeEventListener('pointerdown',tryPlay);
+      window.removeEventListener('keydown',tryPlay);
+    };
+    audio.play().then(()=>setMusicOn(true)).catch(()=>{
+      window.addEventListener('pointerdown',tryPlay,{once:true});
+      window.addEventListener('keydown',tryPlay,{once:true});
+    });
+  },[]);
+
+  useEffect(()=>{
+    const splash=document.getElementById('splash');
+    (async()=>{
+      const[s,dl,w,fl,y,r,c,st,t,cl,disc,as]=await Promise.all([
+        db.get('settings'),db.get('daily_logs'),db.get('workouts'),db.get('food_logs'),
+        db.get('ycycle'),db.get('relations'),db.get('campaigns'),db.get('stories'),
+        db.get('todos'),db.get('challenge_log'),db.get('academy_disciplines'),db.get('academy_sessions'),
+      ]);
+      if(s)setSettings({...DEF,...s,pageCommanders:{...DEF.pageCommanders,...(s.pageCommanders||{})}});
+      if(dl)setDailyLogs(dl);if(w)setWorkouts(w);if(fl)setFoodLogs(fl);if(y)setYcycle(y);
+      if(r)setRelations(r);if(c)setCampaigns(c);if(st)setStories(st);if(t)setTodos(t);
+      if(cl)setChallengeLog(cl);if(disc)setDisciplines(disc);if(as)setAcademySessions(as);
+      if(splash)splash.style.display='none';
+    })();
+    if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  },[]);
+
+  const render=()=>{
+    switch(page){
+      case'dashboard':return<Dashboard dailyLogs={dailyLogs} settings={settings} todos={todos} campaigns={campaigns} workouts={workouts} academySessions={academySessions}/>;
+      case'vitals':return<Vitals dailyLogs={dailyLogs} setDailyLogs={setDailyLogs}/>;
+      case'workout':return<Workout workouts={workouts} setWorkouts={setWorkouts}/>;
+      case'zcycle':return<ZCycle dailyLogs={dailyLogs} setDailyLogs={setDailyLogs}/>;
+      case'ycycle':return<YCycle ycycle={ycycle} setYcycle={setYcycle}/>;
+      case'food':return<FoodCycle foodLogs={foodLogs} setFoodLogs={setFoodLogs}/>;
+      case'lore':return<LorePage stories={stories} setStories={setStories}/>;
+      case'campaigns':return<Campaigns campaigns={campaigns} setCampaigns={setCampaigns} challengeLog={challengeLog} setChallengeLog={setChallengeLog}/>;
+      case'calendar':return<WeightCalendar dailyLogs={dailyLogs} setDailyLogs={setDailyLogs} settings={settings} workouts={workouts} academySessions={academySessions} disciplines={disciplines}/>;
+      case'relations':return<Relationships relations={relations} setRelations={setRelations}/>;
+      case'todos':return<TodoList todos={todos} setTodos={setTodos}/>;
+      case'summary':return<WeeklySummary dailyLogs={dailyLogs} workouts={workouts} foodLogs={foodLogs} ycycle={ycycle}/>;
+      case'academy':return<RoyalAcademy disciplines={disciplines} setDisciplines={setDisciplines} sessions={academySessions} setSessions={setAcademySessions}/>;
+      case'settings':return<Settings settings={settings} setSettings={setSettings} dailyLogs={dailyLogs} workouts={workouts} foodLogs={foodLogs} ycycle={ycycle} relations={relations} campaigns={campaigns} stories={stories} todos={todos} disciplines={disciplines} academySessions={academySessions} challengeLog={challengeLog}/>;
+      default:return null;
+    }
+  };
+
+  return(
+    <div style={{background:T.bg,height:'100vh',height:'100dvh',color:T.text,fontFamily:"'Crimson Text',serif",display:'flex',flexDirection:'column',overflow:'hidden',maxWidth:480,margin:'0 auto'}}>
+      <audio id="imperial-audio" src="./music/The_Dark_Castle.mp3" loop preload="none"></audio>
+      <button onClick={toggleMusic} title="Toggle imperial ambience" style={{position:'fixed',right:12,bottom:68,zIndex:1000,background:musicOn?T.gold:T.card,color:musicOn?'#000':T.gold,border:`1px solid ${T.gold}66`,borderRadius:999,padding:'9px 12px',fontSize:12,fontWeight:700,fontFamily:'inherit',boxShadow:'0 6px 20px #0008'}}>
+        {musicOn?'♫ ON':'♫ OFF'}
+      </button>
+      <TopBar settings={settings} page={page}/>
+      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+        {render()}
+        <div style={{height:24}}/>
+      </div>
+      <BottomNav page={page} setPage={setPage}/>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
