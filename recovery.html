@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sovereign — Emergency Data Recovery</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#090b12;color:#f3e9d5;font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:700px;margin:0 auto;padding:25px 18px 55px}h1{color:#d8b456;font-size:1.8rem}h2{font-size:1.2rem}p,li{color:#d7d3ca}section{background:#171b27;border:1px solid #404052;border-radius:12px;padding:18px;margin:18px 0}.warn{border-left:4px solid #d8b456;padding-left:12px}button{appearance:none;border:0;border-radius:9px;padding:15px 18px;background:#d8b456;color:#111;font-size:1rem;font-weight:750;cursor:pointer;width:100%;margin:8px 0}button.secondary{background:#333d52;color:#fff}button:disabled{opacity:.5}code{overflow-wrap:anywhere;color:#ffe19b}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0e17;padding:14px;border-radius:8px;font-size:.82rem}small{color:#b8b8bc}#status{min-height:1.5em}table{width:100%;border-collapse:collapse;font-size:.88rem}td,th{text-align:left;border-bottom:1px solid #414451;padding:8px 4px;overflow-wrap:anywhere}td:nth-child(2){text-align:right}a{color:#e5c36d}
+</style>
+</head>
+<body><main>
+<h1>⚜ Sovereign — Emergency Recovery</h1>
+<p class="warn"><strong>Exporting does not change your saved data. Importing will overwrite matching keys only after explicit confirmation.</strong> It runs without Sovereign's React application. Use it on the <strong>same Vercel domain</strong> and in the <strong>same browser/profile</strong> as your game.</p>
+<section><h2>1. Confirm the storage location</h2><p>Current origin: <code id="origin"></code></p><p id="status" role="status">Checking local storage…</p><p><small>If you see zero keys, do not clear storage or assume your records are lost. You may be on a different domain, browser profile, or storage context.</small></p></section>
+<section><h2>2. Export everything first</h2><p>Download a raw copy of <strong>every localStorage key</strong>, including values that aren't valid JSON. This is the safest first backup.</p><button id="export">Download complete raw backup (.json)</button><button id="copy" class="secondary">Copy raw backup to clipboard (alternative)</button><p><small>Backup may contain sensitive personal information and the Imperial Seal hash. Keep it private. Do not upload it to GitHub.</small></p></section>
+<section><h2>3. Inspect what was found</h2><p>Only key names, sizes and JSON validity are shown here. The actual records are not displayed.</p><div id="listing"></div></section>
+<section><h2>4. Import / Restore a saved backup</h2>
+<p>Select the <strong>sovereign-raw-recovery-....json</strong> file exported by this page. The import preserves all other keys, but <strong>overwrites keys included in the backup</strong>. Deploy the repaired Sovereign app before restoring.</p>
+<label for="importFile">Select raw backup JSON</label><input id="importFile" type="file" accept=".json,application/json" style="display:block;width:100%;margin:12px 0;padding:10px;color:#fff;background:#272e3d;border-radius:8px">
+<pre id="importPreview" role="status">No file selected.</pre>
+<label style="display:block;margin:12px 0"><input id="confirmRestore" type="checkbox" disabled> I have kept a separate copy of my backup and understand matching stored keys will be overwritten.</label>
+<button id="restore" disabled>Restore selected backup</button>
+<p id="restoreStatus" role="status"></p><p><small>The page will request a fresh backup of current storage before applying any changes. Do not close the page while restoring. This only restores localStorage, not IndexedDB.</small></p></section>
+<section><h2>5. Next steps</h2><p>After a successful import, reopen Sovereign on the same domain and browser. Check your records before entering new data. Do not clear browser storage or reset the Imperial Seal.</p></section>
+</main><script>
+(function(){'use strict';
+const el=id=>document.getElementById(id);
+el('origin').textContent=location.origin;
+let snapshot=null;
+let importData=null;
+function capture(){
+ const entries={};const keys=[];
+ for(let i=0;i<localStorage.length;i++){
+  const key=localStorage.key(i);if(key===null)continue;
+  const value=localStorage.getItem(key);
+  entries[key]=value;
+  let valid=true;try{JSON.parse(value)}catch(e){valid=false}
+  keys.push({key,characters:value===null?0:value.length,validJSON:valid});
+ }
+ keys.sort((a,b)=>a.key.localeCompare(b.key));
+ return {format:'sovereign-emergency-raw-localstorage',version:1,origin:location.origin,exportedAt:new Date().toISOString(),keyCount:keys.length,entries,inventory:keys};
+}
+function update(){
+ try{
+  snapshot=capture();const sovereign=snapshot.inventory.filter(x=>/sovereign|^(settings|daily_logs|workouts|food_logs|ycycle|relations|campaigns|stories|todos|challenge_log|academy_|events|fiefs|meds|med_log|rituals|ritual_log|expeditions)/i.test(x.key));
+  el('status').textContent='Found '+snapshot.keyCount+' total localStorage key(s); '+sovereign.length+' likely Sovereign-related.';
+  const host=el('listing');host.textContent='';
+  if(!snapshot.inventory.length){host.textContent='No localStorage keys visible at this origin.';return}
+  const table=document.createElement('table'),head=document.createElement('tr');
+  ['Key','Characters','JSON'].forEach(t=>{const th=document.createElement('th');th.textContent=t;head.appendChild(th)});table.appendChild(head);
+  snapshot.inventory.forEach(item=>{const tr=document.createElement('tr');[item.key,String(item.characters),item.validJSON?'valid':'plain text / invalid'].forEach(t=>{const td=document.createElement('td');td.textContent=t;tr.appendChild(td)});table.appendChild(tr)});
+  host.appendChild(table);
+ }catch(err){snapshot=null;el('status').textContent='Cannot read localStorage: '+String(err);el('listing').textContent='';}
+}
+function backupText(){const latest=capture();return JSON.stringify(latest,null,2)}
+function downloadBackup(content,prefix){
+ const blob=new Blob([content],{type:'application/json;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download=prefix+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function checkImport(data){
+ if(!data||typeof data!=='object'||Array.isArray(data)||data.format!=='sovereign-emergency-raw-localstorage'||data.version!==1)throw Error('Not a supported Sovereign raw recovery backup (version 1).');
+ if(data.origin!==location.origin)throw Error('Origin mismatch: backup is from '+String(data.origin)+', but this page is '+location.origin+'. Use the original website.');
+ const entries=data.entries;
+ if(!entries||typeof entries!=='object'||Array.isArray(entries))throw Error('Missing backup entries.');
+ const keys=Object.keys(entries);
+ if(!keys.length)throw Error('Backup contains zero entries.');
+ if(keys.length>5000)throw Error('Unreasonable key count.');
+ if(data.keyCount!==keys.length)throw Error('Backup key count does not match its contents.');
+ for(const key of keys){if(typeof entries[key]!=='string'||key.length>1000)throw Error('Invalid key or value: '+key)}
+ return keys;
+}
+el('importFile').addEventListener('change',async function(){
+ importData=null;el('restore').disabled=true;el('confirmRestore').checked=false;el('confirmRestore').disabled=true;
+ const file=this.files&&this.files[0];if(!file){el('importPreview').textContent='No file selected.';return}
+ try{
+  if(file.size>50*1024*1024)throw Error('File is too large.');
+  const parsed=JSON.parse(await file.text());const keys=checkImport(parsed);
+  const overwritten=keys.filter(k=>localStorage.getItem(k)!==null).length;
+  importData=parsed;
+  el('importPreview').textContent='Validated '+keys.length+' entries from '+parsed.exportedAt+'\nOrigin: '+parsed.origin+'\nExisting matching keys that will be overwritten: '+overwritten+'\nOther current keys will remain untouched.';
+  el('confirmRestore').disabled=false;
+ }catch(e){el('importPreview').textContent='Cannot import: '+String(e)}
+});
+el('confirmRestore').addEventListener('change',function(){el('restore').disabled=!(importData&&this.checked)});
+el('restore').addEventListener('click',function(){
+ if(!importData||!el('confirmRestore').checked)return;
+ const keys=checkImport(importData);
+ if(!window.confirm('Restore '+keys.length+' entries to '+location.origin+'? Matching keys will be overwritten. Continue only if the repaired Sovereign app is deployed.'))return;
+ const oldValues=new Map();for(const key of keys)oldValues.set(key,localStorage.getItem(key));
+ try{
+  downloadBackup(backupText(),'sovereign-before-import-');
+  for(const key of keys)localStorage.setItem(key,importData.entries[key]);
+  const failed=keys.filter(key=>localStorage.getItem(key)!==importData.entries[key]);
+  if(failed.length)throw Error('Storage verification failed for '+failed.length+' key(s).');
+  el('restoreStatus').textContent='SUCCESS: Restored and verified '+keys.length+' entries. Open Sovereign now.';
+  el('confirmRestore').checked=false;el('restore').disabled=true;update();
+ }catch(err){
+  let rollbackError='';
+  try{for(const [key,previous] of oldValues){if(previous===null)localStorage.removeItem(key);else localStorage.setItem(key,previous)}}catch(e){rollbackError=' Rollback also failed: '+String(e)}
+  el('restoreStatus').textContent='RESTORE FAILED: '+String(err)+'. Previous matching values were restored where possible.'+rollbackError;
+ }
+});
+el('export').addEventListener('click',function(){
+ try{
+  downloadBackup(backupText(),'sovereign-raw-recovery-');
+  el('status').textContent='Backup download requested. Check your Downloads folder and confirm the file exists.';
+ }catch(err){el('status').textContent='Export failed: '+String(err)}
+});
+el('copy').addEventListener('click',async function(){
+ try{const content=backupText();if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error('Clipboard not supported in this browser');await navigator.clipboard.writeText(content);el('status').textContent='Raw backup copied. Paste into a private text file and save it.'}
+ catch(err){el('status').textContent='Clipboard failed: '+String(err)+'; use Download instead.'}
+});
+update();
+})();
+</script></body></html>
